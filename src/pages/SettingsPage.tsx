@@ -132,7 +132,11 @@ export default function SettingsPage() {
           </label>
 
           <div className="inline-controls">
-            <button type="button" onClick={handleApplyDemoPreset}>
+            <button
+              className="w-fit rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow"
+              type="button"
+              onClick={handleApplyDemoPreset}
+            >
               {t('settings.applyDemoPreset')}
             </button>
           </div>
