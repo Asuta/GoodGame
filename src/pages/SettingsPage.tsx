@@ -58,18 +58,25 @@ export default function SettingsPage() {
   }
 
   if (!form) {
-    return <section className="panel">{t('settings.loading')}</section>
+    return (
+      <section className="rounded-3xl border border-white/60 bg-white/80 p-5 text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur">
+        {t('settings.loading')}
+      </section>
+    )
   }
 
   return (
-    <section className="panel page-grid">
+    <section className="grid gap-4 rounded-3xl border border-white/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur animate-[revealUp_620ms_cubic-bezier(0.22,1,0.36,1)] lg:grid-cols-[1.4fr_1fr]">
       <div>
-        <h1>{t('settings.title')}</h1>
-        <p>{t('settings.subtitle')}</p>
-        <form onSubmit={handleSave} className="form-grid">
+        <h1 className="bg-gradient-to-r from-slate-900 via-indigo-700 to-cyan-600 bg-[length:200%_100%] bg-clip-text text-2xl font-semibold text-transparent animate-[shimmer_8s_linear_infinite]">
+          {t('settings.title')}
+        </h1>
+        <p className="mt-1 text-sm text-slate-600">{t('settings.subtitle')}</p>
+        <form onSubmit={handleSave} className="mt-4 grid gap-3">
           <label>
             {t('settings.apiMode')}
             <select
+              className="mt-1"
               value={form.apiMode}
               onChange={(event) =>
                 setForm((prev) => (prev ? { ...prev, apiMode: event.target.value as ApiMode } : prev))
@@ -83,6 +90,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.baseUrl')}
             <input
+              className="mt-1"
               value={form.baseUrl}
               onChange={(event) => setForm((prev) => (prev ? { ...prev, baseUrl: event.target.value } : prev))}
             />
@@ -91,6 +99,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.apiKey')}
             <input
+              className="mt-1"
               type="password"
               value={form.apiKey}
               onChange={(event) => setForm((prev) => (prev ? { ...prev, apiKey: event.target.value } : prev))}
@@ -100,6 +109,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.model')}
             <input
+              className="mt-1"
               value={form.model}
               onChange={(event) => setForm((prev) => (prev ? { ...prev, model: event.target.value } : prev))}
             />
@@ -108,6 +118,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.temperature')}
             <input
+              className="mt-1"
               type="number"
               min={0}
               max={2}
@@ -122,6 +133,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.maxOutputTokens')}
             <input
+              className="mt-1"
               type="number"
               min={1}
               max={4000}
@@ -135,6 +147,7 @@ export default function SettingsPage() {
           <label>
             {t('settings.systemPrompt')}
             <textarea
+              className="mt-1"
               rows={5}
               value={form.systemPrompt}
               onChange={(event) =>
@@ -143,17 +156,23 @@ export default function SettingsPage() {
             />
           </label>
 
-          <button type="submit">{t('settings.save')}</button>
+          <button
+            className="w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-900/20"
+            type="submit"
+          >
+            {t('settings.save')}
+          </button>
         </form>
       </div>
 
-      <aside>
-        <h2>{t('settings.importExport')}</h2>
-        <p>{t('settings.importExportDesc')}</p>
-        <div className="inline-controls">
+      <aside className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4 animate-[revealUp_780ms_cubic-bezier(0.22,1,0.36,1)]">
+        <h2 className="text-lg font-semibold text-slate-900">{t('settings.importExport')}</h2>
+        <p className="mt-1 text-sm text-slate-600">{t('settings.importExportDesc')}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <label>
             {t('settings.importMode')}
             <select
+              className="mt-1"
               value={importMode}
               onChange={(event) => setImportMode(event.target.value as 'replace' | 'merge')}
             >
@@ -162,13 +181,18 @@ export default function SettingsPage() {
             </select>
           </label>
         </div>
-        <div className="inline-controls">
-          <button type="button" onClick={handleExport}>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow"
+            type="button"
+            onClick={handleExport}
+          >
             {t('settings.export')}
           </button>
-          <label className="file-input-label">
+          <label className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow">
             {t('settings.import')}
             <input
+              className="mt-1.5 block"
               type="file"
               accept="application/json"
               onChange={(event) => {
@@ -181,7 +205,7 @@ export default function SettingsPage() {
           </label>
         </div>
 
-        {message ? <p className="status-message">{message}</p> : null}
+        {message ? <p className="mt-3 text-sm font-medium text-emerald-700">{message}</p> : null}
       </aside>
     </section>
   )

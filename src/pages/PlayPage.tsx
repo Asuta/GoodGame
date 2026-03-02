@@ -299,36 +299,58 @@ export default function PlayPage() {
   }
 
   if (!state) {
-    return <section className="panel">{t('play.loading')}</section>
+    return (
+      <section className="rounded-3xl border border-white/60 bg-white/80 p-5 text-slate-700 shadow-lg shadow-slate-900/5 backdrop-blur">
+        {t('play.loading')}
+      </section>
+    )
   }
 
   return (
-    <section className="play-layout">
-      <article className="panel story-panel">
-        <div className="inline-controls">
-          <h1>{t('play.title')}</h1>
-          <button type="button" onClick={handleResetSession} disabled={busy}>
+    <section className="grid gap-3 lg:grid-cols-[1.65fr_1fr]">
+      <article className="grid content-start gap-3 rounded-3xl border border-white/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur animate-[revealUp_620ms_cubic-bezier(0.22,1,0.36,1)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="bg-gradient-to-r from-slate-900 via-sky-700 to-cyan-600 bg-[length:200%_100%] bg-clip-text text-2xl font-semibold text-transparent animate-[shimmer_8s_linear_infinite]">
+            {t('play.title')}
+          </h1>
+          <button
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow-md"
+            type="button"
+            onClick={handleResetSession}
+            disabled={busy}
+          >
             {t('play.reset')}
           </button>
         </div>
-        <p>{t('play.subtitle')}</p>
+        <p className="text-sm text-slate-600">{t('play.subtitle')}</p>
 
         {!latestTurn ? (
-          <button type="button" onClick={handleStart} disabled={busy}>
+          <button
+            className="w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-900/25"
+            type="button"
+            onClick={handleStart}
+            disabled={busy}
+          >
             {t('play.start')}
           </button>
         ) : (
           <>
-            <section className="panel sub-panel">
-              <h2>{t('play.currentNarration')}</h2>
-              <p>{latestTurn.narration}</p>
+            <section className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 animate-[revealUp_550ms_cubic-bezier(0.22,1,0.36,1)]">
+              <h2 className="text-lg font-semibold text-slate-900">{t('play.currentNarration')}</h2>
+              <p className="leading-7 text-slate-700">{latestTurn.narration}</p>
             </section>
 
-            <section className="panel sub-panel">
-              <h2>{t('play.options')}</h2>
-              <div className="options-grid">
+            <section className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 animate-[revealUp_650ms_cubic-bezier(0.22,1,0.36,1)]">
+              <h2 className="text-lg font-semibold text-slate-900">{t('play.options')}</h2>
+              <div className="grid gap-2.5">
                 {latestTurn.options.map((option) => (
-                  <button key={option.id} type="button" onClick={() => void handlePickOption(option)} disabled={busy}>
+                  <button
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-slate-700 transition duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg hover:shadow-sky-900/10"
+                    key={option.id}
+                    type="button"
+                    onClick={() => void handlePickOption(option)}
+                    disabled={busy}
+                  >
                     {option.text}
                     {option.check ? ` (${option.check.expr}${option.check.dc ? ` vs ${option.check.dc}` : ''})` : ''}
                   </button>
@@ -338,45 +360,49 @@ export default function PlayPage() {
           </>
         )}
 
-        <section className="panel sub-panel">
-          <h2>{t('play.recentHistory')}</h2>
-          <ol className="turn-list">
+        <section className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 animate-[revealUp_750ms_cubic-bezier(0.22,1,0.36,1)]">
+          <h2 className="text-lg font-semibold text-slate-900">{t('play.recentHistory')}</h2>
+          <ol className="m-0 grid list-decimal gap-2 pl-5">
             {state.turns
               .slice(-6)
               .reverse()
               .map((turn) => (
                 <li key={turn.id}>
-                  <p>
+                  <p className="text-sm text-slate-700">
                     <strong>{t('play.turn', { index: turn.index })}</strong>: {turn.narration}
                   </p>
-                  {turn.selectedOptionText ? <p>{t('play.choice', { text: turn.selectedOptionText })}</p> : null}
-                  {turn.roll ? <p>{t('play.roll', { text: compactRollResult(turn.roll, t) })}</p> : null}
+                  {turn.selectedOptionText ? (
+                    <p className="mt-1 text-xs text-slate-500">{t('play.choice', { text: turn.selectedOptionText })}</p>
+                  ) : null}
+                  {turn.roll ? (
+                    <p className="mt-1 text-xs text-slate-500">{t('play.roll', { text: compactRollResult(turn.roll, t) })}</p>
+                  ) : null}
                 </li>
               ))}
           </ol>
         </section>
 
-        {error ? <p className="status-error">{error}</p> : null}
-        {info ? <p className="status-message">{info}</p> : null}
+        {error ? <p className="text-sm font-medium text-red-700">{error}</p> : null}
+        {info ? <p className="text-sm font-medium text-emerald-700">{info}</p> : null}
       </article>
 
-      <aside className="panel status-panel">
-        <h2>{t('play.statusPanel')}</h2>
-        <section className="panel sub-panel">
-          <h3>{t('play.world')}</h3>
-          <p>{state.world.name}</p>
+      <aside className="grid content-start gap-3 rounded-3xl border border-white/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur animate-[revealUp_820ms_cubic-bezier(0.22,1,0.36,1)] lg:max-h-[calc(100vh-5rem)] lg:overflow-auto">
+        <h2 className="text-lg font-semibold text-slate-900">{t('play.statusPanel')}</h2>
+        <section className="grid gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{t('play.world')}</h3>
+          <p className="text-slate-700">{state.world.name}</p>
         </section>
 
-        <section className="panel sub-panel">
-          <h3>{t('play.player')}</h3>
-          <p>{state.player.name}</p>
-          <p>{state.player.status || t('play.noStatus')}</p>
+        <section className="grid gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{t('play.player')}</h3>
+          <p className="text-slate-700">{state.player.name}</p>
+          <p className="text-sm text-slate-500">{state.player.status || t('play.noStatus')}</p>
         </section>
 
-        <section className="panel sub-panel">
-          <h3>{t('play.activeNpcs')}</h3>
+        <section className="grid gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{t('play.activeNpcs')}</h3>
           {state.npcs.length ? (
-            <ul>
+            <ul className="m-0 grid list-disc gap-1.5 pl-5 text-sm text-slate-700">
               {state.npcs.map((npc) => (
                 <li key={npc.id}>
                   {npc.name} ({t('play.affinity')} {npc.affinity})
@@ -384,25 +410,26 @@ export default function PlayPage() {
               ))}
             </ul>
           ) : (
-            <p>{t('play.noActiveNpc')}</p>
+            <p className="text-sm text-slate-500">{t('play.noActiveNpc')}</p>
           )}
         </section>
 
-        <section className="panel sub-panel">
-          <h3>{t('play.pendingPatches')}</h3>
+        <section className="grid gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{t('play.pendingPatches')}</h3>
           {!latestTurn?.proposedPatches.length ? (
-            <p>{t('play.noPatches')}</p>
+            <p className="text-sm text-slate-500">{t('play.noPatches')}</p>
           ) : (
-            <ul className="patch-list">
+            <ul className="m-0 grid list-disc gap-2 pl-5">
               {latestTurn.proposedPatches.map((patch) => {
                 const isApplied = latestTurn.appliedPatchIds.includes(patch.id)
                 return (
                   <li key={patch.id}>
-                    <p>
+                    <p className="text-sm text-slate-700">
                       [{patch.target}] {patch.op} {patch.path}
                     </p>
-                    {patch.reason ? <p>{patch.reason}</p> : null}
+                    {patch.reason ? <p className="mt-1 text-xs text-slate-500">{patch.reason}</p> : null}
                     <button
+                      className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow"
                       type="button"
                       onClick={() => void handleApplyPatch(patch)}
                       disabled={busy || isApplied}

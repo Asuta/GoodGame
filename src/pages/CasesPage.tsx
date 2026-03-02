@@ -48,22 +48,29 @@ export default function CasesPage() {
   }
 
   return (
-    <section className="panel">
-      <h1>{t('cases.title')}</h1>
-      <p>{t('cases.subtitle')}</p>
+    <section className="grid gap-3 rounded-3xl border border-white/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur animate-[revealUp_620ms_cubic-bezier(0.22,1,0.36,1)]">
+      <h1 className="bg-gradient-to-r from-slate-900 via-violet-700 to-cyan-600 bg-[length:200%_100%] bg-clip-text text-2xl font-semibold text-transparent animate-[shimmer_8s_linear_infinite]">
+        {t('cases.title')}
+      </h1>
+      <p className="text-sm text-slate-600">{t('cases.subtitle')}</p>
 
-      <div className="inline-controls">
-        <button type="button" onClick={handleCreate}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-900 hover:text-white hover:shadow"
+          type="button"
+          onClick={handleCreate}
+        >
           {t('cases.add')}
         </button>
       </div>
 
       <form onSubmit={handleSave}>
-        <div className="stacked-list">
+        <div className="grid gap-3">
           {items.map((entry, index) => (
-            <article key={entry.id} className="panel sub-panel">
-              <label className="checkbox-line">
+            <article key={entry.id} className="grid gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-4 transition duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/10">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input
+                  className="size-4"
                   type="checkbox"
                   checked={activeCaseIds.includes(entry.id)}
                   onChange={(event) => {
@@ -78,10 +85,11 @@ export default function CasesPage() {
                 {t('cases.active')}
               </label>
 
-              <div className="form-grid compact-grid">
+              <div className="grid items-start gap-2.5 md:grid-cols-2">
                 <label>
                   {t('cases.titleField')}
                   <input
+                    className="mt-1"
                     value={entry.title}
                     onChange={(event) => updateItem(index, { ...entry, title: event.target.value })}
                   />
@@ -90,6 +98,7 @@ export default function CasesPage() {
                 <label>
                   {t('cases.priority')}
                   <input
+                    className="mt-1"
                     type="number"
                     value={entry.priority}
                     onChange={(event) =>
@@ -101,6 +110,7 @@ export default function CasesPage() {
                 <label>
                   {t('cases.enabled')}
                   <input
+                    className="mt-1 size-4"
                     type="checkbox"
                     checked={entry.enabled}
                     onChange={(event) => updateItem(index, { ...entry, enabled: event.target.checked })}
@@ -110,6 +120,7 @@ export default function CasesPage() {
                 <label>
                   {t('cases.content')}
                   <textarea
+                    className="mt-1"
                     rows={6}
                     value={entry.content}
                     onChange={(event) => updateItem(index, { ...entry, content: event.target.value })}
@@ -120,10 +131,15 @@ export default function CasesPage() {
           ))}
         </div>
 
-        <button type="submit">{t('cases.save')}</button>
+        <button
+          className="mt-3 w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-700 hover:shadow-lg hover:shadow-slate-900/20"
+          type="submit"
+        >
+          {t('cases.save')}
+        </button>
       </form>
 
-      {message ? <p className="status-message">{message}</p> : null}
+      {message ? <p className="text-sm font-medium text-emerald-700">{message}</p> : null}
     </section>
   )
 }
