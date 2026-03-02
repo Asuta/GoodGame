@@ -1,5 +1,11 @@
 # React + TypeScript + Vite
 
+## Project Docs
+
+- `docs/roadmap.md`: milestone plan and acceptance criteria
+- `docs/json-protocol.md`: LLM JSON output contract (v0.1)
+- `docs/storage.md`: frontend storage strategy (IndexedDB + import/export)
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

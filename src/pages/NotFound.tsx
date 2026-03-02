@@ -4,14 +4,14 @@ export default function NotFound() {
   const location = useLocation()
 
   return (
-    <main className="container">
+    <section className="panel">
       <h1>404</h1>
       <p>
         No route matches <code>{location.pathname}</code>
       </p>
       <p>
-        <Link to="/">Back home</Link>
+        <Link to="/play">Back to play</Link>
       </p>
-    </main>
+    </section>
   )
 }
