@@ -18,9 +18,9 @@ const DEFAULT_SESSION_ID = 'session_default'
 export const DEFAULT_SETTINGS: AppSettings = {
   id: 'singleton',
   apiMode: 'responses',
-  baseUrl: 'https://api.openai.com',
-  apiKey: '',
-  model: 'gpt-4.1-mini',
+  baseUrl: 'https://codex-api.packycode.com/v1',
+  apiKey: 'sk-MWqWbvfrrWlAaxPdCnIrRtFsteAs1gI6',
+  model: 'gpt-5.3-codex',
   temperature: 0.8,
   maxOutputTokens: 700,
   systemPrompt: 'You are a concise, engaging dungeon master for a solo campaign.',

@@ -33,6 +33,7 @@ export const messages: Record<Locale, MessageDict> = {
     'settings.baseUrl': 'Base URL',
     'settings.apiKey': 'API Key',
     'settings.model': 'Model',
+    'settings.applyDemoPreset': 'Fill demo API config',
     'settings.temperature': 'Temperature',
     'settings.maxOutputTokens': 'Max output tokens',
     'settings.systemPrompt': 'System prompt',
@@ -47,6 +48,7 @@ export const messages: Record<Locale, MessageDict> = {
     'settings.saved': 'Settings saved',
     'settings.exported': 'Exported JSON file',
     'settings.imported': 'Import completed',
+    'settings.demoPresetApplied': 'Demo API config filled',
     'settings.loading': 'Loading settings...',
 
     'context.title': 'World & Context',
@@ -149,6 +151,7 @@ export const messages: Record<Locale, MessageDict> = {
     'settings.baseUrl': 'Base URL',
     'settings.apiKey': 'API Key',
     'settings.model': '模型 ID',
+    'settings.applyDemoPreset': '填入演示 API 配置',
     'settings.temperature': '温度',
     'settings.maxOutputTokens': '最大输出 tokens',
     'settings.systemPrompt': '系统提示词',
@@ -163,6 +166,7 @@ export const messages: Record<Locale, MessageDict> = {
     'settings.saved': '设置已保存',
     'settings.exported': '已导出 JSON 文件',
     'settings.imported': '导入完成',
+    'settings.demoPresetApplied': '已填入演示 API 配置',
     'settings.loading': '正在加载设置...',
 
     'context.title': '世界观与上下文',

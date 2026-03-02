@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
+  DEFAULT_SETTINGS,
   ensureDefaults,
   exportData,
   getSettings,
@@ -55,6 +56,21 @@ export default function SettingsPage() {
     const settings = await getSettings()
     setForm(settings)
     setMessage(t('settings.imported'))
+  }
+
+  function handleApplyDemoPreset() {
+    setForm((prev) =>
+      prev
+        ? {
+            ...prev,
+            apiMode: DEFAULT_SETTINGS.apiMode,
+            baseUrl: DEFAULT_SETTINGS.baseUrl,
+            apiKey: DEFAULT_SETTINGS.apiKey,
+            model: DEFAULT_SETTINGS.model,
+          }
+        : prev,
+    )
+    setMessage(t('settings.demoPresetApplied'))
   }
 
   if (!form) {
@@ -114,6 +130,12 @@ export default function SettingsPage() {
               onChange={(event) => setForm((prev) => (prev ? { ...prev, model: event.target.value } : prev))}
             />
           </label>
+
+          <div className="inline-controls">
+            <button type="button" onClick={handleApplyDemoPreset}>
+              {t('settings.applyDemoPreset')}
+            </button>
+          </div>
 
           <label>
             {t('settings.temperature')}
