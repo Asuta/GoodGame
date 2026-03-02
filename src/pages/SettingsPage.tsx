@@ -8,9 +8,11 @@ import {
   importData,
   saveSettings,
 } from '@/features/storage/repository'
+import { useI18n } from '@/i18n/useI18n'
 import type { ApiMode, AppSettings, ExportBundle } from '@/types/game'
 
 export default function SettingsPage() {
+  const { t } = useI18n()
   const [form, setForm] = useState<AppSettings | null>(null)
   const [message, setMessage] = useState('')
   const [importMode, setImportMode] = useState<'replace' | 'merge'>('merge')
@@ -31,7 +33,7 @@ export default function SettingsPage() {
 
     const saved = await saveSettings(form)
     setForm(saved)
-    setMessage('Settings saved')
+    setMessage(t('settings.saved'))
   }
 
   async function handleExport() {
@@ -43,7 +45,7 @@ export default function SettingsPage() {
     anchor.download = `goodgame-export-${Date.now()}.json`
     anchor.click()
     URL.revokeObjectURL(url)
-    setMessage('Exported JSON file')
+    setMessage(t('settings.exported'))
   }
 
   async function handleImport(file: File) {
@@ -52,34 +54,34 @@ export default function SettingsPage() {
     await importData(parsed, importMode)
     const settings = await getSettings()
     setForm(settings)
-    setMessage('Import completed')
+    setMessage(t('settings.imported'))
   }
 
   if (!form) {
-    return <section className="panel">Loading settings...</section>
+    return <section className="panel">{t('settings.loading')}</section>
   }
 
   return (
     <section className="panel page-grid">
       <div>
-        <h1>Settings</h1>
-        <p>Configure direct API access and choose Completions or Responses mode.</p>
+        <h1>{t('settings.title')}</h1>
+        <p>{t('settings.subtitle')}</p>
         <form onSubmit={handleSave} className="form-grid">
           <label>
-            API mode
+            {t('settings.apiMode')}
             <select
               value={form.apiMode}
               onChange={(event) =>
                 setForm((prev) => (prev ? { ...prev, apiMode: event.target.value as ApiMode } : prev))
               }
             >
-              <option value="responses">Responses</option>
-              <option value="completions">Completions</option>
+              <option value="responses">{t('settings.mode.responses')}</option>
+              <option value="completions">{t('settings.mode.completions')}</option>
             </select>
           </label>
 
           <label>
-            Base URL
+            {t('settings.baseUrl')}
             <input
               value={form.baseUrl}
               onChange={(event) => setForm((prev) => (prev ? { ...prev, baseUrl: event.target.value } : prev))}
@@ -87,7 +89,7 @@ export default function SettingsPage() {
           </label>
 
           <label>
-            API Key
+            {t('settings.apiKey')}
             <input
               type="password"
               value={form.apiKey}
@@ -96,7 +98,7 @@ export default function SettingsPage() {
           </label>
 
           <label>
-            Model
+            {t('settings.model')}
             <input
               value={form.model}
               onChange={(event) => setForm((prev) => (prev ? { ...prev, model: event.target.value } : prev))}
@@ -104,7 +106,7 @@ export default function SettingsPage() {
           </label>
 
           <label>
-            Temperature
+            {t('settings.temperature')}
             <input
               type="number"
               min={0}
@@ -118,7 +120,7 @@ export default function SettingsPage() {
           </label>
 
           <label>
-            Max output tokens
+            {t('settings.maxOutputTokens')}
             <input
               type="number"
               min={1}
@@ -131,7 +133,7 @@ export default function SettingsPage() {
           </label>
 
           <label>
-            System prompt
+            {t('settings.systemPrompt')}
             <textarea
               rows={5}
               value={form.systemPrompt}
@@ -141,31 +143,31 @@ export default function SettingsPage() {
             />
           </label>
 
-          <button type="submit">Save settings</button>
+          <button type="submit">{t('settings.save')}</button>
         </form>
       </div>
 
       <aside>
-        <h2>Import / Export</h2>
-        <p>Export a full local snapshot or import one back to this browser.</p>
+        <h2>{t('settings.importExport')}</h2>
+        <p>{t('settings.importExportDesc')}</p>
         <div className="inline-controls">
           <label>
-            Import mode
+            {t('settings.importMode')}
             <select
               value={importMode}
               onChange={(event) => setImportMode(event.target.value as 'replace' | 'merge')}
             >
-              <option value="merge">Merge</option>
-              <option value="replace">Replace</option>
+              <option value="merge">{t('settings.merge')}</option>
+              <option value="replace">{t('settings.replace')}</option>
             </select>
           </label>
         </div>
         <div className="inline-controls">
           <button type="button" onClick={handleExport}>
-            Export JSON
+            {t('settings.export')}
           </button>
           <label className="file-input-label">
-            Import JSON
+            {t('settings.import')}
             <input
               type="file"
               accept="application/json"

@@ -10,9 +10,11 @@ import {
   saveSession,
   upsertWorld,
 } from '@/features/storage/repository'
+import { useI18n } from '@/i18n/useI18n'
 import type { SessionData, WorldData } from '@/types/game'
 
 export default function ContextPage() {
+  const { t } = useI18n()
   const [world, setWorld] = useState<WorldData>(DEFAULT_WORLD)
   const [session, setSession] = useState<SessionData>(DEFAULT_SESSION)
   const [message, setMessage] = useState('')
@@ -38,17 +40,17 @@ export default function ContextPage() {
       recentTurns: Math.max(1, session.recentTurns),
     })
     setSession(saved)
-    setMessage('World context saved')
+    setMessage(t('context.saved'))
   }
 
   return (
     <section className="panel">
-      <h1>World & Context</h1>
-      <p>Configure base lore and how many recent turns are added to each model request.</p>
+      <h1>{t('context.title')}</h1>
+      <p>{t('context.subtitle')}</p>
 
       <form onSubmit={handleSave} className="form-grid">
         <label>
-          Session name
+          {t('context.sessionName')}
           <input
             value={session.name}
             onChange={(event) => setSession((prev) => ({ ...prev, name: event.target.value }))}
@@ -56,7 +58,7 @@ export default function ContextPage() {
         </label>
 
         <label>
-          Recent turns in context
+          {t('context.recentTurns')}
           <input
             type="number"
             min={1}
@@ -67,7 +69,7 @@ export default function ContextPage() {
         </label>
 
         <label>
-          World title
+          {t('context.worldTitle')}
           <input
             value={world.name}
             onChange={(event) => setWorld((prev) => ({ ...prev, name: event.target.value }))}
@@ -75,7 +77,7 @@ export default function ContextPage() {
         </label>
 
         <label>
-          World lore
+          {t('context.worldLore')}
           <textarea
             rows={14}
             value={world.content}
@@ -83,7 +85,7 @@ export default function ContextPage() {
           />
         </label>
 
-        <button type="submit">Save context</button>
+        <button type="submit">{t('context.save')}</button>
       </form>
 
       {message ? <p className="status-message">{message}</p> : null}

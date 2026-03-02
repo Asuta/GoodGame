@@ -1,5 +1,7 @@
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom'
 
+import { useI18n } from '@/i18n/useI18n'
+import { SUPPORTED_LOCALES, type Locale } from '@/i18n/messages'
 import CasesPage from '@/pages/CasesPage'
 import ContextPage from '@/pages/ContextPage'
 import NotFound from '@/pages/NotFound'
@@ -9,18 +11,20 @@ import PlayerPage from '@/pages/PlayerPage'
 import SettingsPage from '@/pages/SettingsPage'
 
 function Navigation() {
+  const { locale, setLocale, t } = useI18n()
+
   const tabs = [
-    { path: '/play', label: 'Play' },
-    { path: '/context', label: 'Context' },
-    { path: '/player', label: 'Player' },
-    { path: '/npcs', label: 'NPCs' },
-    { path: '/cases', label: 'Cases' },
-    { path: '/settings', label: 'Settings' },
+    { path: '/play', label: t('nav.play') },
+    { path: '/context', label: t('nav.context') },
+    { path: '/player', label: t('nav.player') },
+    { path: '/npcs', label: t('nav.npcs') },
+    { path: '/cases', label: t('nav.cases') },
+    { path: '/settings', label: t('nav.settings') },
   ]
 
   return (
     <header className="top-nav">
-      <strong>GoodGame Demo</strong>
+      <strong>{t('app.title')}</strong>
       <nav>
         {tabs.map((tab) => (
           <NavLink
@@ -32,6 +36,16 @@ function Navigation() {
           </NavLink>
         ))}
       </nav>
+      <label className="language-switch">
+        {t('app.language')}
+        <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+          {SUPPORTED_LOCALES.map((entry) => (
+            <option key={entry.code} value={entry.code}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+      </label>
     </header>
   )
 }

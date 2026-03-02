@@ -9,9 +9,11 @@ import {
   upsertNpc,
 } from '@/features/storage/repository'
 import { getSession } from '@/features/storage/repository'
+import { useI18n } from '@/i18n/useI18n'
 import type { NpcData } from '@/types/game'
 
 export default function NpcsPage() {
+  const { t } = useI18n()
   const [items, setItems] = useState<NpcData[]>([])
   const [message, setMessage] = useState('')
   const [activeIds, setActiveIds] = useState<string[]>([])
@@ -38,7 +40,7 @@ export default function NpcsPage() {
     event.preventDefault()
     await Promise.all(items.map((entry) => upsertNpc(entry)))
     await saveSession({ activeNpcIds: activeIds })
-    setMessage('NPC changes saved')
+    setMessage(t('npcs.saved'))
   }
 
   function updateItem(index: number, next: NpcData) {
@@ -47,12 +49,12 @@ export default function NpcsPage() {
 
   return (
     <section className="panel">
-      <h1>NPC State</h1>
-      <p>Define NPC records and select which NPCs are active in context.</p>
+      <h1>{t('npcs.title')}</h1>
+      <p>{t('npcs.subtitle')}</p>
 
       <div className="inline-controls">
         <button type="button" onClick={handleCreate}>
-          Add NPC
+          {t('npcs.add')}
         </button>
       </div>
 
@@ -71,12 +73,12 @@ export default function NpcsPage() {
                     )
                   }}
                 />
-                Active in context
+                {t('npcs.active')}
               </label>
 
               <div className="form-grid compact-grid">
                 <label>
-                  Name
+                  {t('player.name')}
                   <input
                     value={npc.name}
                     onChange={(event) => updateItem(index, { ...npc, name: event.target.value })}
@@ -84,7 +86,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  Affinity
+                  {t('npcs.affinity')}
                   <input
                     type="number"
                     value={npc.affinity}
@@ -93,7 +95,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  History
+                  {t('npcs.history')}
                   <textarea
                     rows={3}
                     value={npc.history}
@@ -102,7 +104,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  Attributes
+                  {t('player.attributes')}
                   <textarea
                     rows={3}
                     value={npc.attributes}
@@ -111,7 +113,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  Skills
+                  {t('player.skills')}
                   <textarea
                     rows={3}
                     value={npc.skills}
@@ -120,7 +122,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  Status
+                  {t('player.status')}
                   <textarea
                     rows={2}
                     value={npc.status}
@@ -129,7 +131,7 @@ export default function NpcsPage() {
                 </label>
 
                 <label>
-                  Items
+                  {t('player.items')}
                   <textarea
                     rows={2}
                     value={npc.items}
@@ -141,7 +143,7 @@ export default function NpcsPage() {
           ))}
         </div>
 
-        <button type="submit">Save NPC list</button>
+        <button type="submit">{t('npcs.save')}</button>
       </form>
 
       {message ? <p className="status-message">{message}</p> : null}

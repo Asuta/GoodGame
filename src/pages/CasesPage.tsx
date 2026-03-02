@@ -9,9 +9,11 @@ import {
   saveSession,
   upsertCase,
 } from '@/features/storage/repository'
+import { useI18n } from '@/i18n/useI18n'
 import type { CaseData } from '@/types/game'
 
 export default function CasesPage() {
+  const { t } = useI18n()
   const [items, setItems] = useState<CaseData[]>([])
   const [message, setMessage] = useState('')
   const [activeCaseIds, setActiveCaseIds] = useState<string[]>([])
@@ -38,7 +40,7 @@ export default function CasesPage() {
     event.preventDefault()
     await Promise.all(items.map((entry) => upsertCase(entry)))
     await saveSession({ activeCaseIds })
-    setMessage('Case library saved')
+    setMessage(t('cases.saved'))
   }
 
   function updateItem(index: number, next: CaseData) {
@@ -47,12 +49,12 @@ export default function CasesPage() {
 
   return (
     <section className="panel">
-      <h1>Reference Cases</h1>
-      <p>Manage hidden examples used for style and pacing guidance.</p>
+      <h1>{t('cases.title')}</h1>
+      <p>{t('cases.subtitle')}</p>
 
       <div className="inline-controls">
         <button type="button" onClick={handleCreate}>
-          Add case
+          {t('cases.add')}
         </button>
       </div>
 
@@ -73,12 +75,12 @@ export default function CasesPage() {
                     )
                   }}
                 />
-                Active in context
+                {t('cases.active')}
               </label>
 
               <div className="form-grid compact-grid">
                 <label>
-                  Title
+                  {t('cases.titleField')}
                   <input
                     value={entry.title}
                     onChange={(event) => updateItem(index, { ...entry, title: event.target.value })}
@@ -86,7 +88,7 @@ export default function CasesPage() {
                 </label>
 
                 <label>
-                  Priority (low first)
+                  {t('cases.priority')}
                   <input
                     type="number"
                     value={entry.priority}
@@ -97,7 +99,7 @@ export default function CasesPage() {
                 </label>
 
                 <label>
-                  Enabled
+                  {t('cases.enabled')}
                   <input
                     type="checkbox"
                     checked={entry.enabled}
@@ -106,7 +108,7 @@ export default function CasesPage() {
                 </label>
 
                 <label>
-                  Content
+                  {t('cases.content')}
                   <textarea
                     rows={6}
                     value={entry.content}
@@ -118,7 +120,7 @@ export default function CasesPage() {
           ))}
         </div>
 
-        <button type="submit">Save cases</button>
+        <button type="submit">{t('cases.save')}</button>
       </form>
 
       {message ? <p className="status-message">{message}</p> : null}

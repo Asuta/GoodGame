@@ -24,6 +24,8 @@ import { parseModelReply } from '@/lib/jsonProtocol'
 import { requestModelReply } from '@/lib/llmClient'
 import { applyPatch } from '@/lib/patches'
 import { makeId, nowIso } from '@/lib/random'
+import type { Locale } from '@/i18n/messages'
+import { useI18n } from '@/i18n/useI18n'
 import type {
   CaseData,
   NpcData,
@@ -80,21 +82,49 @@ async function loadState(): Promise<AppState> {
   }
 }
 
-function describeChoice(option: StoryOption, rollSummary?: string): string {
+function describeChoice(locale: Locale, option: StoryOption, rollSummary?: string): string {
+  if (locale === 'zh') {
+    if (!rollSummary) {
+      return `玩家选择：${option.text}`
+    }
+    return `玩家选择：${option.text}。掷骰结果：${rollSummary}。`
+  }
+
   if (!rollSummary) {
     return `Player chose: ${option.text}`
   }
   return `Player chose: ${option.text}. Dice result: ${rollSummary}.`
 }
 
-function compactRollResult(roll: NonNullable<TurnData['roll']>): string {
+function compactRollResult(
+  roll: NonNullable<TurnData['roll']>,
+  translate: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   const modifierText = roll.modifier ? (roll.modifier > 0 ? `+${roll.modifier}` : `${roll.modifier}`) : ''
   const dcText = typeof roll.dc === 'number' ? ` vs DC ${roll.dc}` : ''
-  const successText = typeof roll.success === 'boolean' ? (roll.success ? ' (success)' : ' (failure)') : ''
+  const successText =
+    typeof roll.success === 'boolean'
+      ? ` (${roll.success ? translate('play.roll.success') : translate('play.roll.failure')})`
+      : ''
   return `${roll.expression}: [${roll.rolls.join(', ')}]${modifierText} => ${roll.total}${dcText}${successText}`
 }
 
+function startInstruction(locale: Locale): string {
+  if (locale === 'zh') {
+    return '请用中文开启这次跑团，并给出 3 到 5 个可执行选项。'
+  }
+  return 'Start the campaign with an opening scene and provide 3 to 5 options.'
+}
+
+function languageOutputInstruction(locale: Locale): string {
+  if (locale === 'zh') {
+    return 'All narration, options, and patch reason fields must be in Chinese.'
+  }
+  return 'All narration, options, and patch reason fields must be in English.'
+}
+
 export default function PlayPage() {
+  const { t, locale } = useI18n()
   const [state, setState] = useState<AppState | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -121,12 +151,12 @@ export default function PlayPage() {
 
     setBusy(true)
     setError('')
-    setInfo('Generating story...')
+    setInfo(t('play.generating'))
 
     try {
       const settings = await getSettings()
       if (!settings.apiKey.trim()) {
-        throw new Error('API key is missing in Settings')
+        throw new Error(t('play.error.apiKeyMissing'))
       }
 
       const contextPrompt = buildContextPrompt({
@@ -145,7 +175,7 @@ export default function PlayPage() {
         model: settings.model,
         temperature: settings.temperature,
         maxOutputTokens: settings.maxOutputTokens,
-        systemPrompt: `${settings.systemPrompt}\n\n${getProtocolInstruction()}`,
+        systemPrompt: `${settings.systemPrompt}\n\n${getProtocolInstruction()}\n${languageOutputInstruction(locale)}`,
         contextPrompt,
         userInstruction,
       })
@@ -175,9 +205,9 @@ export default function PlayPage() {
             }
           : prev,
       )
-      setInfo('Turn generated')
+      setInfo(t('play.turnGenerated'))
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to generate turn')
+      setError(requestError instanceof Error ? requestError.message : t('play.error.generateFailed'))
       setInfo('')
     } finally {
       setBusy(false)
@@ -185,7 +215,7 @@ export default function PlayPage() {
   }
 
   async function handleStart() {
-    await requestNextTurn('Start the campaign with an opening scene and provide 3 to 5 options.')
+    await requestNextTurn(startInstruction(locale))
   }
 
   async function handlePickOption(option: StoryOption) {
@@ -195,12 +225,12 @@ export default function PlayPage() {
 
       if (option.check) {
         roll = rollFromCheck(option.check)
-        rollSummary = compactRollResult(roll)
+        rollSummary = compactRollResult(roll, t)
       }
 
-      await requestNextTurn(describeChoice(option, rollSummary), option.text, roll)
+      await requestNextTurn(describeChoice(locale, option, rollSummary), option.text, roll)
     } catch (rollError) {
-      setError(rollError instanceof Error ? rollError.message : 'Dice roll failed')
+      setError(rollError instanceof Error ? rollError.message : t('play.error.diceFailed'))
       setInfo('')
     }
   }
@@ -222,11 +252,11 @@ export default function PlayPage() {
       } else {
         const targetId = patch.targetId
         if (!targetId) {
-          throw new Error('NPC patch requires targetId')
+          throw new Error(t('play.error.npcPatchNeedId'))
         }
         const targetNpc = state.npcs.find((entry) => entry.id === targetId)
         if (!targetNpc) {
-          throw new Error(`NPC ${targetId} is not active in this session`)
+          throw new Error(t('play.error.npcNotActive', { id: targetId }))
         }
         const updatedNpc = applyPatch(targetNpc, patch)
         await upsertNpc(updatedNpc)
@@ -253,9 +283,9 @@ export default function PlayPage() {
             }
           : prev,
       )
-      setInfo('Patch applied')
+      setInfo(t('play.patchApplied'))
     } catch (patchError) {
-      setError(patchError instanceof Error ? patchError.message : 'Patch failed')
+      setError(patchError instanceof Error ? patchError.message : t('play.error.patchFailed'))
     }
   }
 
@@ -265,37 +295,37 @@ export default function PlayPage() {
     }
     await clearTurns(state.session.id)
     setState((prev) => (prev ? { ...prev, turns: [] } : prev))
-    setInfo('Session turns cleared')
+    setInfo(t('play.turnsCleared'))
   }
 
   if (!state) {
-    return <section className="panel">Loading play session...</section>
+    return <section className="panel">{t('play.loading')}</section>
   }
 
   return (
     <section className="play-layout">
       <article className="panel story-panel">
         <div className="inline-controls">
-          <h1>Play</h1>
+          <h1>{t('play.title')}</h1>
           <button type="button" onClick={handleResetSession} disabled={busy}>
-            Reset turns
+            {t('play.reset')}
           </button>
         </div>
-        <p>Single-player mode. Click options only, no free typing.</p>
+        <p>{t('play.subtitle')}</p>
 
         {!latestTurn ? (
           <button type="button" onClick={handleStart} disabled={busy}>
-            Start adventure
+            {t('play.start')}
           </button>
         ) : (
           <>
             <section className="panel sub-panel">
-              <h2>Current narration</h2>
+              <h2>{t('play.currentNarration')}</h2>
               <p>{latestTurn.narration}</p>
             </section>
 
             <section className="panel sub-panel">
-              <h2>Options</h2>
+              <h2>{t('play.options')}</h2>
               <div className="options-grid">
                 {latestTurn.options.map((option) => (
                   <button key={option.id} type="button" onClick={() => void handlePickOption(option)} disabled={busy}>
@@ -309,7 +339,7 @@ export default function PlayPage() {
         )}
 
         <section className="panel sub-panel">
-          <h2>Recent history</h2>
+          <h2>{t('play.recentHistory')}</h2>
           <ol className="turn-list">
             {state.turns
               .slice(-6)
@@ -317,10 +347,10 @@ export default function PlayPage() {
               .map((turn) => (
                 <li key={turn.id}>
                   <p>
-                    <strong>Turn {turn.index}</strong>: {turn.narration}
+                    <strong>{t('play.turn', { index: turn.index })}</strong>: {turn.narration}
                   </p>
-                  {turn.selectedOptionText ? <p>Choice: {turn.selectedOptionText}</p> : null}
-                  {turn.roll ? <p>Roll: {compactRollResult(turn.roll)}</p> : null}
+                  {turn.selectedOptionText ? <p>{t('play.choice', { text: turn.selectedOptionText })}</p> : null}
+                  {turn.roll ? <p>{t('play.roll', { text: compactRollResult(turn.roll, t) })}</p> : null}
                 </li>
               ))}
           </ol>
@@ -331,37 +361,37 @@ export default function PlayPage() {
       </article>
 
       <aside className="panel status-panel">
-        <h2>Status Panel</h2>
+        <h2>{t('play.statusPanel')}</h2>
         <section className="panel sub-panel">
-          <h3>World</h3>
+          <h3>{t('play.world')}</h3>
           <p>{state.world.name}</p>
         </section>
 
         <section className="panel sub-panel">
-          <h3>Player</h3>
+          <h3>{t('play.player')}</h3>
           <p>{state.player.name}</p>
-          <p>{state.player.status || 'No status'}</p>
+          <p>{state.player.status || t('play.noStatus')}</p>
         </section>
 
         <section className="panel sub-panel">
-          <h3>Active NPCs</h3>
+          <h3>{t('play.activeNpcs')}</h3>
           {state.npcs.length ? (
             <ul>
               {state.npcs.map((npc) => (
                 <li key={npc.id}>
-                  {npc.name} (Affinity {npc.affinity})
+                  {npc.name} ({t('play.affinity')} {npc.affinity})
                 </li>
               ))}
             </ul>
           ) : (
-            <p>No active NPC.</p>
+            <p>{t('play.noActiveNpc')}</p>
           )}
         </section>
 
         <section className="panel sub-panel">
-          <h3>Pending Patches</h3>
+          <h3>{t('play.pendingPatches')}</h3>
           {!latestTurn?.proposedPatches.length ? (
-            <p>No proposed changes.</p>
+            <p>{t('play.noPatches')}</p>
           ) : (
             <ul className="patch-list">
               {latestTurn.proposedPatches.map((patch) => {
@@ -377,7 +407,7 @@ export default function PlayPage() {
                       onClick={() => void handleApplyPatch(patch)}
                       disabled={busy || isApplied}
                     >
-                      {isApplied ? 'Applied' : 'Apply patch'}
+                      {isApplied ? t('play.applied') : t('play.applyPatch')}
                     </button>
                   </li>
                 )

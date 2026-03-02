@@ -8,9 +8,11 @@ import {
   getSession,
   upsertPlayer,
 } from '@/features/storage/repository'
+import { useI18n } from '@/i18n/useI18n'
 import type { PlayerData } from '@/types/game'
 
 export default function PlayerPage() {
+  const { t } = useI18n()
   const [player, setPlayer] = useState<PlayerData>(DEFAULT_PLAYER)
   const [message, setMessage] = useState('')
 
@@ -28,17 +30,17 @@ export default function PlayerPage() {
   async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await upsertPlayer(player)
-    setMessage('Player profile saved')
+    setMessage(t('player.saved'))
   }
 
   return (
     <section className="panel">
-      <h1>Player Character</h1>
-      <p>Maintain structured player state to feed every model request.</p>
+      <h1>{t('player.title')}</h1>
+      <p>{t('player.subtitle')}</p>
 
       <form onSubmit={handleSave} className="form-grid">
         <label>
-          Name
+          {t('player.name')}
           <input
             value={player.name}
             onChange={(event) => setPlayer((prev) => ({ ...prev, name: event.target.value }))}
@@ -46,7 +48,7 @@ export default function PlayerPage() {
         </label>
 
         <label>
-          Attributes
+          {t('player.attributes')}
           <textarea
             rows={4}
             value={player.attributes}
@@ -55,7 +57,7 @@ export default function PlayerPage() {
         </label>
 
         <label>
-          Skills
+          {t('player.skills')}
           <textarea
             rows={4}
             value={player.skills}
@@ -64,7 +66,7 @@ export default function PlayerPage() {
         </label>
 
         <label>
-          Status
+          {t('player.status')}
           <textarea
             rows={3}
             value={player.status}
@@ -73,7 +75,7 @@ export default function PlayerPage() {
         </label>
 
         <label>
-          Equipment
+          {t('player.equipment')}
           <textarea
             rows={3}
             value={player.equipment}
@@ -82,7 +84,7 @@ export default function PlayerPage() {
         </label>
 
         <label>
-          Items
+          {t('player.items')}
           <textarea
             rows={3}
             value={player.items}
@@ -90,7 +92,7 @@ export default function PlayerPage() {
           />
         </label>
 
-        <button type="submit">Save player</button>
+        <button type="submit">{t('player.save')}</button>
       </form>
 
       {message ? <p className="status-message">{message}</p> : null}

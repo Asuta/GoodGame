@@ -94,6 +94,19 @@ textarea {
   flex-wrap: wrap;
 }
 
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #255252;
+  white-space: nowrap;
+}
+
+.language-switch select {
+  width: auto;
+  min-width: 92px;
+}
+
 .nav-item {
   padding: 0.35rem 0.65rem;
   border-radius: 999px;
