@@ -11,7 +11,7 @@ function resolveInitialLocale(): Locale {
   if (stored === 'en' || stored === 'zh') {
     return stored
   }
-  return 'en'
+  return 'zh'
 }
 
 function interpolate(template: string, vars?: Record<string, string | number>): string {
