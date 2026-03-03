@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
 
 import { rollDice } from '@/lib/dice'
 import { callOpenAIJson } from '@/lib/openai'
@@ -141,6 +141,47 @@ function renderApiModeLabel(mode: ApiFormat): string {
   }
 
   return 'Responses (新接口)'
+}
+
+function normalizeMessageContent(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t')
+}
+
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+  const chunks = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)
+
+  return chunks.filter(Boolean).map((chunk, index) => {
+    if (chunk.startsWith('**') && chunk.endsWith('**') && chunk.length > 4) {
+      return <strong key={`${keyPrefix}-strong-${index}`}>{chunk.slice(2, -2)}</strong>
+    }
+
+    if (chunk.startsWith('`') && chunk.endsWith('`') && chunk.length > 2) {
+      return <code key={`${keyPrefix}-code-${index}`}>{chunk.slice(1, -1)}</code>
+    }
+
+    return <Fragment key={`${keyPrefix}-text-${index}`}>{chunk}</Fragment>
+  })
+}
+
+function MessageBody({ content }: { content: string }) {
+  const normalized = normalizeMessageContent(content)
+  const lines = normalized.split('\n')
+
+  return (
+    <div className="message-content">
+      {lines.map((line, index) => (
+        <Fragment key={`line-${index}`}>
+          {index > 0 ? <br /> : null}
+          {renderInlineMarkdown(line, `line-${index}`)}
+        </Fragment>
+      ))}
+    </div>
+  )
 }
 
 export default function Home() {
@@ -310,6 +351,20 @@ export default function Home() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (busy || !input.trim()) {
+      return
+    }
+
+    event.currentTarget.form?.requestSubmit()
   }
 
   async function generateWorld() {
@@ -531,7 +586,7 @@ export default function Home() {
               <span className="meta">
                 {message.role === 'assistant' ? 'DM' : message.role === 'user' ? '你' : 'System'}
               </span>
-              <p>{message.content}</p>
+              <MessageBody content={message.content} />
             </article>
           ))}
         </div>
@@ -540,6 +595,7 @@ export default function Home() {
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={onComposerKeyDown}
             rows={4}
             placeholder="输入你的行动，例如：我尝试说服守卫放行，并且观察他的眼神。"
           />
