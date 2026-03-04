@@ -168,7 +168,7 @@
   .chat-panel {
     padding: 1rem;
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto 1fr auto;
     gap: 0.8rem;
     min-height: 0;
     overflow: hidden;
@@ -179,6 +179,14 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.8rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .chat-panel header h2 {
@@ -292,6 +300,68 @@
     padding: 0.75rem;
   }
 
+  .context-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+  }
+
+  .context-backdrop {
+    position: absolute;
+    inset: 0;
+    border: none;
+    background: rgba(6, 11, 18, 0.7);
+    backdrop-filter: blur(4px);
+    cursor: pointer;
+  }
+
+  .context-card {
+    position: relative;
+    z-index: 1;
+    width: min(900px, 100%);
+    max-height: min(82vh, 900px);
+    border: 1px solid rgba(236, 243, 248, 0.16);
+    border-radius: 16px;
+    background: rgba(13, 20, 30, 0.95);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+  }
+
+  .context-card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.8rem;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid rgba(236, 243, 248, 0.12);
+  }
+
+  .context-card h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #9fd5c7;
+  }
+
+  .context-card p {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: rgba(236, 243, 248, 0.72);
+  }
+
+  .context-card pre {
+    margin: 0;
+    padding: 0.9rem 1rem;
+    white-space: pre-wrap;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: rgba(236, 243, 248, 0.83);
+    overflow: auto;
+  }
+
   .composer textarea {
     width: 100%;
     margin: 0;
@@ -350,5 +420,9 @@
 
   .bubble {
     max-width: 96%;
+  }
+
+  .context-card {
+    max-height: 88vh;
   }
 }

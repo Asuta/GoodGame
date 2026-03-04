@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import type { FormEvent, KeyboardEvent, ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from 'react'
 
 import { rollDice } from '@/lib/dice'
-import { callOpenAIJson } from '@/lib/openai'
+import { callOpenAIJson, callOpenAIJsonStream } from '@/lib/openai'
 import type { ApiConfig, ApiFormat, ConversationTurn } from '@/lib/openai'
 
 type MessageRole = 'user' | 'assistant' | 'system'
@@ -44,6 +44,12 @@ interface PersistedState {
   messages: ChatMessage[]
 }
 
+interface SaveArchive {
+  version: 1
+  exportedAt: string
+  state: PersistedState
+}
+
 const STORAGE_KEY = 'ai-trpg-studio-v1'
 
 const DEFAULT_CONFIG: ApiConfig = {
@@ -51,8 +57,61 @@ const DEFAULT_CONFIG: ApiConfig = {
   baseUrl: 'https://codex-api.packycode.com/v1',
   model: 'gpt-5.3-codex',
   format: 'responses',
-  temperature: 0.8,
   maxTokens: 900,
+}
+
+function normalizeMaxTokens(value: unknown): number | null {
+  if (value === null || value === 'unlimited') {
+    return null
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_CONFIG.maxTokens
+  }
+
+  return Math.floor(parsed)
+}
+
+function estimateTokenCount(text: string): number {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) {
+    return 0
+  }
+
+  let tokens = 0
+  let asciiRun = 0
+
+  const flushAsciiRun = () => {
+    if (asciiRun > 0) {
+      tokens += Math.max(1, Math.ceil(asciiRun / 4))
+      asciiRun = 0
+    }
+  }
+
+  for (const char of normalized) {
+    if (/\s/.test(char)) {
+      flushAsciiRun()
+      continue
+    }
+
+    if (/[\u3400-\u9fff\uf900-\ufaff]/u.test(char)) {
+      flushAsciiRun()
+      tokens += 1
+      continue
+    }
+
+    if (/[a-zA-Z0-9]/.test(char)) {
+      asciiRun += 1
+      continue
+    }
+
+    flushAsciiRun()
+    tokens += 1
+  }
+
+  flushAsciiRun()
+  return tokens
 }
 
 const DEFAULT_CONTEXT: GameContext = {
@@ -184,7 +243,101 @@ function MessageBody({ content }: { content: string }) {
   )
 }
 
+function extractReplyPreview(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  const payload = parseJsonFromText(trimmed)
+  if (typeof payload.reply === 'string' && payload.reply.trim()) {
+    return payload.reply
+  }
+
+  const match = raw.match(/"reply"\s*:\s*"((?:\\.|[^"\\])*)/)
+  if (!match?.[1]) {
+    return ''
+  }
+
+  const normalized = match[1]
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+
+  return normalized.trim()
+}
+
+function toPersistedStateSnapshot(
+  apiConfig: ApiConfig,
+  context: GameContext,
+  conceptInput: string,
+  sendFullHistory: boolean,
+  messages: ChatMessage[],
+): PersistedState {
+  return {
+    apiConfig,
+    context,
+    conceptInput,
+    sendFullHistory,
+    messages,
+  }
+}
+
+function parseImportedArchive(payload: unknown): PersistedState | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null
+  }
+
+  const rawState = 'state' in payload ? (payload as { state?: unknown }).state : payload
+  if (typeof rawState !== 'object' || rawState === null) {
+    return null
+  }
+
+  const candidate = rawState as Partial<PersistedState>
+
+  if (!candidate.apiConfig || !candidate.context || !Array.isArray(candidate.messages)) {
+    return null
+  }
+
+  const safeApiConfig: ApiConfig = {
+    ...DEFAULT_CONFIG,
+    ...candidate.apiConfig,
+    maxTokens: normalizeMaxTokens(candidate.apiConfig.maxTokens),
+  }
+
+  const safeContext: GameContext = {
+    ...DEFAULT_CONTEXT,
+    ...candidate.context,
+  }
+
+  const safeMessages: ChatMessage[] = (candidate.messages as unknown[])
+    .filter((item): item is Partial<ChatMessage> => typeof item === 'object' && item !== null)
+    .map((item) => {
+      const role: MessageRole = item.role === 'assistant' || item.role === 'system' ? item.role : 'user'
+
+      return {
+        id: typeof item.id === 'string' && item.id.trim() ? item.id : nowId(),
+        role,
+        content: typeof item.content === 'string' ? item.content : '',
+        timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+      }
+    })
+
+  return {
+    apiConfig: safeApiConfig,
+    context: safeContext,
+    conceptInput: typeof candidate.conceptInput === 'string' ? candidate.conceptInput : '',
+    sendFullHistory: typeof candidate.sendFullHistory === 'boolean' ? candidate.sendFullHistory : true,
+    messages: safeMessages.length > 0 ? safeMessages : INITIAL_MESSAGES,
+  }
+}
+
 export default function Home() {
+  const messagesRef = useRef<HTMLDivElement | null>(null)
+  const importFileRef = useRef<HTMLInputElement | null>(null)
+  const shouldStickToBottomRef = useRef(true)
   const [apiConfig, setApiConfig] = useState<ApiConfig>(DEFAULT_CONFIG)
   const [context, setContext] = useState<GameContext>(DEFAULT_CONTEXT)
   const [conceptInput, setConceptInput] = useState('')
@@ -193,6 +346,8 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [worldBusy, setWorldBusy] = useState(false)
+  const [streamingReply, setStreamingReply] = useState('')
+  const [showContextPanel, setShowContextPanel] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -204,7 +359,11 @@ export default function Home() {
     try {
       const parsed = JSON.parse(raw) as Partial<PersistedState>
       if (parsed.apiConfig) {
-        setApiConfig({ ...DEFAULT_CONFIG, ...parsed.apiConfig })
+        setApiConfig({
+          ...DEFAULT_CONFIG,
+          ...parsed.apiConfig,
+          maxTokens: normalizeMaxTokens(parsed.apiConfig.maxTokens),
+        })
       }
       if (parsed.context) {
         setContext({ ...DEFAULT_CONTEXT, ...parsed.context })
@@ -224,24 +383,71 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const payload: PersistedState = {
-      apiConfig,
-      context,
-      conceptInput,
-      sendFullHistory,
-      messages,
-    }
+    const payload = toPersistedStateSnapshot(apiConfig, context, conceptInput, sendFullHistory, messages)
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   }, [apiConfig, context, conceptInput, sendFullHistory, messages])
+
+  useEffect(() => {
+    const box = messagesRef.current
+    if (!box || !shouldStickToBottomRef.current) {
+      return
+    }
+
+    box.scrollTop = box.scrollHeight
+  }, [messages, streamingReply])
+
+  useEffect(() => {
+    if (!showContextPanel) {
+      return
+    }
+
+    const onEsc = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowContextPanel(false)
+      }
+    }
+
+    window.addEventListener('keydown', onEsc)
+    return () => {
+      window.removeEventListener('keydown', onEsc)
+    }
+  }, [showContextPanel])
 
   const contextPreview = useMemo(() => {
     return [context.background, context.rules, context.characters, context.styleReference].join('\n\n')
   }, [context])
 
+  const contextTokenUsage = useMemo(() => {
+    const historyTurns = buildHistory(messages, true)
+    const historyText = historyTurns
+      .map((turn) => `${turn.role === 'assistant' ? 'DM' : 'Player'}: ${turn.content}`)
+      .join('\n')
+
+    const contextTokens = estimateTokenCount(contextPreview)
+    const historyTokens = estimateTokenCount(historyText)
+
+    return {
+      contextTokens,
+      historyTokens,
+      total: contextTokens + historyTokens,
+    }
+  }, [contextPreview, messages])
+
+  function handleMessagesScroll() {
+    const box = messagesRef.current
+    if (!box) {
+      return
+    }
+
+    const distanceFromBottom = box.scrollHeight - box.scrollTop - box.clientHeight
+    shouldStickToBottomRef.current = distanceFromBottom <= 24
+  }
+
   async function runAgentTurn(
     userText: string,
     messageSnapshot: ChatMessage[],
+    onReplyStream?: (text: string) => void,
   ): Promise<{ reply: string; nextContext: GameContext; logs: string[] }> {
     let workingContext = context
     const toolLogs: string[] = []
@@ -253,7 +459,36 @@ export default function Home() {
       const systemPrompt = `你是一个网页跑团游戏的 DM Agent。你必须输出 JSON 对象，不允许输出额外文本。\n\n当前设定:\n${workingContext.background}\n\n${workingContext.rules}\n\n${workingContext.characters}\n\n${workingContext.styleReference}\n\n能力限制:\n1) 你可以通过 actions 执行 update_context 或 roll_dice。\n2) update_context 用于更新 background / rules / characters / styleReference。\n3) roll_dice 的 expression 仅使用 NdM+K 或 NdM-K 格式。\n\n输出格式:\n{\n  "analysis": "简短说明",\n  "actions": [\n    {"type":"update_context","target":"characters","operation":"append","content":"..."},\n    {"type":"roll_dice","expression":"1d20+2","reason":"潜行检定"}\n  ],\n  "reply": "给玩家展示的最终回复"\n}\n\n如果你执行了 actions，请在下一轮综合 actions 结果再给更准确回复。若无需 actions，actions 返回空数组。`
 
       const userPrompt = `玩家输入: ${userText}\n\n历史工具结果:\n${toolLogs.join('\n') || '无'}`
-      const raw = await callOpenAIJson(apiConfig, systemPrompt, history, userPrompt)
+      let raw = ''
+
+      try {
+        raw = await callOpenAIJsonStream(apiConfig, systemPrompt, history, userPrompt, {
+          onDelta: (_delta: string, accumulated: string) => {
+            if (!onReplyStream) {
+              return
+            }
+
+            const preview = extractReplyPreview(accumulated)
+            if (preview) {
+              onReplyStream(preview)
+            }
+          },
+        })
+      } catch (streamIssue) {
+        const streamReason = streamIssue instanceof Error ? streamIssue.message : '未知错误'
+        toolLogs.push(`stream_fallback: 流式请求失败（${streamReason}），已自动切换普通请求`)
+
+        try {
+          raw = await callOpenAIJson(apiConfig, systemPrompt, history, userPrompt)
+        } catch (nonStreamIssue) {
+          if (streamIssue instanceof Error && nonStreamIssue instanceof Error) {
+            throw new Error(`流式与普通请求均失败: ${streamIssue.message} / ${nonStreamIssue.message}`)
+          }
+
+          throw nonStreamIssue
+        }
+      }
+
       const payload = parseJsonFromText(raw)
       const actions = payload.actions ?? []
 
@@ -305,6 +540,7 @@ export default function Home() {
 
     setBusy(true)
     setError('')
+    setStreamingReply('')
 
     const userMessage: ChatMessage = {
       id: nowId(),
@@ -318,7 +554,7 @@ export default function Home() {
     setInput('')
 
     try {
-      const { reply, nextContext, logs } = await runAgentTurn(text, nextMessages)
+      const { reply, nextContext, logs } = await runAgentTurn(text, nextMessages, setStreamingReply)
       setContext(nextContext)
 
       const assistantMessage: ChatMessage = {
@@ -336,9 +572,11 @@ export default function Home() {
       }))
 
       setMessages((current) => [...current, ...systemMessages, assistantMessage])
+      setStreamingReply('')
     } catch (issue) {
       const reason = issue instanceof Error ? issue.message : '未知错误'
       setError(reason)
+      setStreamingReply('')
       setMessages((current) => [
         ...current,
         {
@@ -418,6 +656,57 @@ export default function Home() {
     }
   }
 
+  function exportArchive() {
+    const snapshot = toPersistedStateSnapshot(apiConfig, context, conceptInput, sendFullHistory, messages)
+    const archive: SaveArchive = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      state: snapshot,
+    }
+
+    const json = JSON.stringify(archive, null, 2)
+    const blob = new Blob([json], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+
+    anchor.href = url
+    anchor.download = `trpg-save-${stamp}.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function importArchive(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+      const restored = parseImportedArchive(parsed)
+
+      if (!restored) {
+        throw new Error('存档格式不正确，无法导入。')
+      }
+
+      setApiConfig(restored.apiConfig)
+      setContext(restored.context)
+      setConceptInput(restored.conceptInput)
+      setSendFullHistory(restored.sendFullHistory)
+      setMessages(restored.messages)
+      setInput('')
+      setStreamingReply('')
+      setError('')
+    } catch (issue) {
+      const reason = issue instanceof Error ? issue.message : '未知错误'
+      setError(`导入失败: ${reason}`)
+    } finally {
+      event.target.value = ''
+    }
+  }
+
   return (
     <main className="trpg-shell">
       <section className="control-panel">
@@ -468,32 +757,37 @@ export default function Home() {
           </label>
           <div className="split">
             <label>
-              Temperature
-              <input
-                type="number"
-                min={0}
-                max={2}
-                step={0.1}
-                value={apiConfig.temperature}
-                onChange={(event) =>
-                  setApiConfig((current) => ({ ...current, temperature: Number(event.target.value) || 0 }))
-                }
-              />
-            </label>
-            <label>
               Max Tokens
               <input
                 type="number"
                 min={128}
                 max={4096}
                 step={1}
-                value={apiConfig.maxTokens}
+                value={apiConfig.maxTokens ?? ''}
+                disabled={apiConfig.maxTokens === null}
+                placeholder={apiConfig.maxTokens === null ? '不限制' : undefined}
                 onChange={(event) =>
-                  setApiConfig((current) => ({ ...current, maxTokens: Number(event.target.value) || 900 }))
+                  setApiConfig((current) => ({
+                    ...current,
+                    maxTokens: normalizeMaxTokens(event.target.value),
+                  }))
                 }
               />
             </label>
           </div>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={apiConfig.maxTokens === null}
+              onChange={(event) =>
+                setApiConfig((current) => ({
+                  ...current,
+                  maxTokens: event.target.checked ? null : DEFAULT_CONFIG.maxTokens,
+                }))
+              }
+            />
+            Max Tokens 不限制
+          </label>
           <label className="checkbox-row">
             <input
               type="checkbox"
@@ -555,6 +849,25 @@ export default function Home() {
             />
           </label>
         </div>
+
+        <div className="panel-block">
+          <h2>存档管理</h2>
+          <div className="split">
+            <button type="button" onClick={exportArchive}>
+              导出存档
+            </button>
+            <button type="button" className="ghost" onClick={() => importFileRef.current?.click()}>
+              导入存档
+            </button>
+          </div>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={importArchive}
+            style={{ display: 'none' }}
+          />
+        </div>
       </section>
 
       <section className="chat-panel">
@@ -562,25 +875,29 @@ export default function Home() {
           <div>
             <h2>剧情会话</h2>
             <p>{renderApiModeLabel(apiConfig.format)} · {sendFullHistory ? '全历史模式' : '短历史模式'}</p>
+            <p>
+              上下文 Token 估算: {contextTokenUsage.total}（设定 {contextTokenUsage.contextTokens} + 对话历史{' '}
+              {contextTokenUsage.historyTokens}）
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              setMessages(INITIAL_MESSAGES)
-              setError('')
-            }}
-            className="ghost"
-          >
-            清空聊天
-          </button>
+          <div className="header-actions">
+            <button type="button" className="ghost" onClick={() => setShowContextPanel(true)}>
+              查看上下文
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessages(INITIAL_MESSAGES)
+                setError('')
+              }}
+              className="ghost"
+            >
+              清空聊天
+            </button>
+          </div>
         </header>
 
-        <div className="context-preview">
-          <strong>当前上下文快照</strong>
-          <pre>{contextPreview}</pre>
-        </div>
-
-        <div className="messages">
+        <div className="messages" ref={messagesRef} onScroll={handleMessagesScroll}>
           {messages.map((message) => (
             <article key={message.id} className={`bubble ${message.role}`}>
               <span className="meta">
@@ -589,6 +906,12 @@ export default function Home() {
               <MessageBody content={message.content} />
             </article>
           ))}
+          {busy && streamingReply ? (
+            <article className="bubble assistant streaming">
+              <span className="meta">DM</span>
+              <MessageBody content={streamingReply} />
+            </article>
+          ) : null}
         </div>
 
         <form onSubmit={onSubmit} className="composer">
@@ -607,6 +930,24 @@ export default function Home() {
           </div>
         </form>
       </section>
+
+      {showContextPanel ? (
+        <div className="context-modal" role="dialog" aria-modal="true" aria-label="当前上下文快照">
+          <button type="button" className="context-backdrop" onClick={() => setShowContextPanel(false)} aria-label="关闭" />
+          <section className="context-card">
+            <header>
+              <div>
+                <h3>当前上下文快照</h3>
+                <p>设定 + 历史对话的完整文本，按 ESC 或点击外部可关闭。</p>
+              </div>
+              <button type="button" className="ghost" onClick={() => setShowContextPanel(false)}>
+                关闭
+              </button>
+            </header>
+            <pre>{contextPreview}</pre>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }
