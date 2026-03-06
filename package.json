@@ -5,7 +5,7 @@
   "description": "Interactive narrative raising game editor demo built with React, TypeScript, and Vite.",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev": "node -e \"const p=require('node:path'); const pkg=(process.env.npm_package_json||'').replace(/^\\\\\\\\\\\\?\\\\/,''); const root=p.dirname(pkg||p.resolve('package.json')); require(p.join(root,'scripts','dev-runner.cjs'));\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
