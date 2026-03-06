@@ -31,6 +31,26 @@ export type Narrative = {
   choices: NarrativeChoice[]
 }
 
+export type AiApiMode = 'chat-completions' | 'responses'
+
+export type AiReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+export type AiConfig = {
+  enabled: boolean
+  apiMode: AiApiMode
+  apiBaseUrl: string
+  apiKey: string
+  model: string
+  reasoningEffort: AiReasoningEffort
+  temperature: number
+  maxLines: number
+  recentLogLimit: number
+  characterName: string
+  characterProfile: string
+  worldSetting: string
+  promptNotes: string
+}
+
 export type DailyAction = {
   id: string
   name: string
@@ -77,6 +97,7 @@ export type GameConfig = {
   stats: StatDef[]
   dailyActions: DailyAction[]
   events: StoryEvent[]
+  ai: AiConfig
 }
 
 export type GameState = {

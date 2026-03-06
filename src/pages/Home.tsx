@@ -23,9 +23,10 @@ const TYPING_SPEED_OPTIONS = [
 const AUTO_PLAY_DELAY = 700
 
 export default function Home() {
-  const { config, resetConfig } = useGameConfig()
+  const { config, setConfig, resetConfig } = useGameConfig()
   const [typingSpeedId, setTypingSpeedId] = useState<(typeof TYPING_SPEED_OPTIONS)[number]['id']>('normal')
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const {
     game,
     currentScene,
@@ -34,6 +35,8 @@ export default function Home() {
     dialogue,
     inPrologue,
     isDialogueOpen,
+    isGeneratingNarrative,
+    aiError,
     unlockedCount,
     handleAdvancePrologue,
     handleDialogueChoice,
@@ -44,6 +47,102 @@ export default function Home() {
   } = useGameRuntime(config)
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
   const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '...', typingDelay)
+
+
+  const settingsPanel = settingsOpen ? (
+    <section className="mb-4 rounded-2xl border border-cyan-200/60 bg-white/88 p-4 shadow-lg shadow-cyan-100/40 backdrop-blur">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-cyan-700">AI Settings</p>
+          <h2 className="text-lg font-semibold text-slate-900">Player AI settings</h2>
+        </div>
+        <button className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white" onClick={() => setSettingsOpen(false)} type="button">
+          Hide settings
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">Enable AI story</span>
+          <span className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+            <input
+              checked={config.ai.enabled}
+              onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, enabled: e.target.checked } }))}
+              type="checkbox"
+            />
+            <span>Allow players to use their own model credentials</span>
+          </span>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">API format</span>
+          <select
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            value={config.ai.apiMode}
+            onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, apiMode: e.target.value as typeof prev.ai.apiMode } }))}
+          >
+            <option value="chat-completions">Chat Completions</option>
+            <option value="responses">Responses</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">Base URL</span>
+          <input
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            value={config.ai.apiBaseUrl}
+            onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, apiBaseUrl: e.target.value } }))}
+            placeholder="https://your-api.example.com/v1"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">Model name</span>
+          <input
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            value={config.ai.model}
+            onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, model: e.target.value } }))}
+            placeholder="gpt-5.4"
+          />
+        </label>
+
+
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">Reasoning effort</span>
+          <select
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            value={config.ai.reasoningEffort}
+            onChange={(e) =>
+              setConfig((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, reasoningEffort: e.target.value as typeof prev.ai.reasoningEffort },
+              }))
+            }
+          >
+            <option value="default">Model default</option>
+            <option value="none">Off / no reasoning</option>
+            <option value="minimal">Minimal</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="xhigh">Extra high</option>
+          </select>
+        </label>
+
+        <label className="md:col-span-2 flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">API Key</span>
+          <input
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            value={config.ai.apiKey}
+            onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, apiKey: e.target.value } }))}
+            placeholder="sk-..."
+          />
+        </label>
+      </div>
+
+      <p className="mt-3 text-xs text-slate-500">These values are stored in this browser. For GPT-5.4, you can also switch reasoning strength here, including turning reasoning off entirely.</p>
+    </section>
+  ) : null
 
   useEffect(() => {
     if (!autoPlayEnabled || isTyping) return
@@ -86,7 +185,7 @@ export default function Home() {
       <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
         <div>
           <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/90">行动安排</p>
-          <p className="text-[11px] text-slate-400">今日指令</p>
+          <p className="text-[11px] text-slate-400">{config.ai.enabled ? `AI story - ${config.ai.apiMode === 'responses' ? 'Responses' : 'Chat Completions'}` : 'Today commands'}</p>
         </div>
         {!inPrologue && (
           <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
@@ -98,7 +197,7 @@ export default function Home() {
       {inPrologue ? (
         <button
           className="w-full rounded-xl border border-cyan-300/25 bg-cyan-500/85 px-3 py-2 text-sm font-medium text-white shadow-[0_8px_18px_rgba(6,182,212,0.22)] transition hover:bg-cyan-400 disabled:opacity-40"
-          disabled={isDialogueOpen}
+          disabled={isDialogueOpen || isGeneratingNarrative}
           onClick={handleAdvancePrologue}
         >
           继续序章
@@ -109,7 +208,7 @@ export default function Home() {
             <button
               key={action.id}
               className="group rounded-xl border border-slate-700/80 bg-[linear-gradient(180deg,rgba(18,32,58,0.86),rgba(10,20,39,0.9))] p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-cyan-400/70 hover:bg-[linear-gradient(180deg,rgba(20,40,72,0.92),rgba(12,24,46,0.95))] disabled:opacity-40"
-              disabled={game.energy < action.cost || isDialogueOpen}
+              disabled={game.energy < action.cost || isDialogueOpen || isGeneratingNarrative}
               onClick={() => handleDoAction(action)}
             >
               <div className="flex items-start justify-between gap-2">
@@ -124,7 +223,7 @@ export default function Home() {
 
           <button
             className="rounded-xl border border-amber-400/20 bg-[linear-gradient(180deg,#f59e0b,#d97706)] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(217,119,6,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:opacity-40 sm:col-span-2"
-            disabled={isDialogueOpen}
+            disabled={isDialogueOpen || isGeneratingNarrative}
             onClick={handleEndDay}
           >
             结束今天
@@ -148,6 +247,9 @@ export default function Home() {
           <a className="rounded-lg bg-slate-700 px-3 py-1.5 text-white" href="/editor" rel="noreferrer" target="_blank">
             新窗口编辑
           </a>
+          <button className="rounded-lg bg-cyan-700 px-3 py-1.5 text-white" onClick={() => setSettingsOpen((prev) => !prev)} type="button">
+            {settingsOpen ? 'Hide settings' : 'AI settings'}
+          </button>
           <button className="rounded-lg bg-amber-700 px-3 py-1.5 text-white" onClick={handleRestart}>
             重开试玩
           </button>
@@ -156,6 +258,8 @@ export default function Home() {
           </button>
         </div>
       </header>
+
+      {settingsPanel}
 
       <section className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <article className="overflow-hidden rounded-2xl border border-slate-900/30 bg-slate-950 shadow-2xl shadow-slate-900/35">
@@ -260,6 +364,10 @@ export default function Home() {
                     下一步
                   </button>
                 )
+              ) : isGeneratingNarrative ? (
+                <p className="text-xs text-cyan-200">AI is generating a fresh story beat...</p>
+              ) : aiError ? (
+                <p className="text-xs text-amber-200">AI request failed, static narrative restored: {aiError}</p>
               ) : (
                 <p className="text-xs text-slate-400">{config.subtitle}</p>
               )}

@@ -188,6 +188,23 @@ export const DEFAULT_CONFIG: GameConfig = {
       },
     },
   ],
+  ai: {
+    enabled: true,
+    apiMode: 'responses',
+    apiBaseUrl: 'https://codex-api.packycode.com/v1',
+    apiKey: 'sk-MWqWbvfrrWlAaxPdCnIrRtFsteAs1gI6',
+    model: 'gpt-5.4',
+    reasoningEffort: 'default',
+    temperature: 1,
+    maxLines: 4,
+    recentLogLimit: 12,
+    characterName: 'Boarding Girl',
+    characterProfile:
+      'A quiet girl you recently took in. She carries old injuries, stays cautious around people, but still longs for safety, patience, and genuine care.',
+    worldSetting: 'A modern-day slice-of-life raising story focused on care, recovery, study, companionship, and slowly earned trust.',
+    promptNotes:
+      'Write in Simplified Chinese. Keep each response to 3 or 4 short story beats, 1 or 2 sentences per line, with gentle randomness and daily-life detail.',
+  },
   events: [
     {
       id: 'first-smile',

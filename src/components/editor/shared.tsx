@@ -1,6 +1,6 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 
-import type { GameConfig } from '@/lib/gameCore'
+import { normalizeGameConfig, type GameConfig } from '@/lib/gameCore'
 
 export type ConfigSetter = Dispatch<SetStateAction<GameConfig>>
 
@@ -23,7 +23,7 @@ export function linesToText(lines: string[] | undefined) {
 export function updateConfigText(value: string, setConfig: ConfigSetter, setError: (value: string) => void) {
   setError('')
   try {
-    const parsed = JSON.parse(value) as GameConfig
+    const parsed = normalizeGameConfig(JSON.parse(value) as GameConfig)
     if (!parsed.title || !Array.isArray(parsed.stats) || !Array.isArray(parsed.dailyActions) || !Array.isArray(parsed.events)) {
       throw new Error('invalid')
     }

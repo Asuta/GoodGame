@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 
+import { AiTab } from '@/components/editor/AiTab'
 import { BaseTab } from '@/components/editor/BaseTab'
 import { DataTab } from '@/components/editor/DataTab'
 import { Field, linesToText, textToLines } from '@/components/editor/shared'
@@ -11,7 +12,7 @@ import { DEFAULT_CONFIG, nextId, type Operator } from '@/lib/gameCore'
 
 export default function Editor() {
   const { config, setConfig, resetConfig } = useGameConfig()
-  const [tab, setTab] = useState<'base' | 'media' | 'stats' | 'actions' | 'events' | 'data'>('base')
+  const [tab, setTab] = useState<'base' | 'ai' | 'media' | 'stats' | 'actions' | 'events' | 'data'>('base')
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState('')
 
@@ -57,6 +58,10 @@ export default function Editor() {
 
         {tab === 'base' && (
           <BaseTab config={config} setConfig={setConfig} />
+        )}
+
+        {tab === 'ai' && (
+          <AiTab config={config} setConfig={setConfig} />
         )}
 
         {tab === 'media' && (
