@@ -1,11 +1,11 @@
-﻿{
+{
   "name": "goodgame-editor",
   "private": true,
   "version": "0.0.0",
   "description": "Interactive narrative raising game editor demo built with React, TypeScript, and Vite.",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
