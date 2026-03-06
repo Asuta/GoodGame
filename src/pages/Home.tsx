@@ -79,6 +79,61 @@ export default function Home() {
     if (inPrologue) handleAdvancePrologue()
   }
 
+  const actionPanel = (
+    <div className="absolute bottom-4 right-4 z-20 w-[min(360px,calc(100%-2rem))] rounded-2xl border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(6,16,34,0.9),rgba(2,10,24,0.92))] p-2.5 shadow-[0_18px_36px_rgba(2,6,23,0.42),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur md:bottom-5 md:right-5 md:w-[340px]">
+      <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/45 to-transparent" />
+
+      <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/90">行动安排</p>
+          <p className="text-[11px] text-slate-400">今日指令</p>
+        </div>
+        {!inPrologue && (
+          <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+            EN {game.energy}/{config.maxEnergy}
+          </div>
+        )}
+      </div>
+
+      {inPrologue ? (
+        <button
+          className="w-full rounded-xl border border-cyan-300/25 bg-cyan-500/85 px-3 py-2 text-sm font-medium text-white shadow-[0_8px_18px_rgba(6,182,212,0.22)] transition hover:bg-cyan-400 disabled:opacity-40"
+          disabled={isDialogueOpen}
+          onClick={handleAdvancePrologue}
+        >
+          继续序章
+        </button>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {config.dailyActions.map((action) => (
+            <button
+              key={action.id}
+              className="group rounded-xl border border-slate-700/80 bg-[linear-gradient(180deg,rgba(18,32,58,0.86),rgba(10,20,39,0.9))] p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-cyan-400/70 hover:bg-[linear-gradient(180deg,rgba(20,40,72,0.92),rgba(12,24,46,0.95))] disabled:opacity-40"
+              disabled={game.energy < action.cost || isDialogueOpen}
+              onClick={() => handleDoAction(action)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-cyan-50 transition group-hover:text-white">{action.name}</p>
+                <span className="rounded-full border border-cyan-400/20 bg-slate-950/70 px-2 py-0.5 text-[10px] font-medium text-cyan-200">
+                  {action.cost}
+                </span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-[11px] leading-4.5 text-slate-300">{action.description}</p>
+            </button>
+          ))}
+
+          <button
+            className="rounded-xl border border-amber-400/20 bg-[linear-gradient(180deg,#f59e0b,#d97706)] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(217,119,6,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:opacity-40 sm:col-span-2"
+            disabled={isDialogueOpen}
+            onClick={handleEndDay}
+          >
+            结束今天
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-[1600px] px-3 py-4 md:px-6 md:py-6">
       <header className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-300/40 bg-white/60 px-4 py-3 backdrop-blur">
@@ -124,6 +179,8 @@ export default function Home() {
             <div className="absolute left-4 top-4 rounded-md bg-black/45 px-2 py-1 text-xs tracking-[0.2em] text-amber-100/90">
               SCENE: {currentScene?.name || '未命名场景'}
             </div>
+
+            {!isDialogueOpen && actionPanel}
           </div>
 
           <div className="bg-slate-950/95 p-4 text-slate-100">
@@ -207,6 +264,7 @@ export default function Home() {
                 <p className="text-xs text-slate-400">{config.subtitle}</p>
               )}
             </div>
+
           </div>
         </article>
 
@@ -249,35 +307,6 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-700/60 p-3">
-            <p className="mb-2 text-xs uppercase tracking-[0.18em] text-cyan-200">行动</p>
-
-            {inPrologue ? (
-              <button className="w-full rounded-lg bg-cyan-600 px-3 py-2 text-sm font-medium disabled:opacity-40" disabled={isDialogueOpen} onClick={handleAdvancePrologue}>
-                继续序章
-              </button>
-            ) : (
-              <div className="space-y-2">
-                {config.dailyActions.map((action) => (
-                  <button
-                    key={action.id}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-800/70 p-2 text-left transition hover:border-cyan-400 disabled:opacity-40"
-                    disabled={game.energy < action.cost || isDialogueOpen}
-                    onClick={() => handleDoAction(action)}
-                  >
-                    <p className="text-sm font-semibold text-cyan-50">
-                      {action.name} · {action.cost}
-                    </p>
-                    <p className="text-xs text-slate-300">{action.description}</p>
-                  </button>
-                ))}
-
-                <button className="w-full rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium disabled:opacity-40" disabled={isDialogueOpen} onClick={handleEndDay}>
-                  结束今天
-                </button>
-              </div>
-            )}
-          </div>
 
           <div className="rounded-xl border border-slate-700/60 p-3">
             <p className="mb-2 text-xs uppercase tracking-[0.18em] text-cyan-200">日志</p>
