@@ -1,10 +1,11 @@
-import type { DailyAction, GameConfig, GameState, StoryEvent } from './gameCore/types'
+﻿import type { DailyAction, GameConfig, GameState, StoryEvent } from './gameCore/types'
 
 type GenerateActionStoryParams = {
   action: DailyAction
   config: GameConfig
   state: GameState
   triggeredEvents: StoryEvent[]
+  previousLines?: string[]
   signal?: AbortSignal
 }
 
@@ -34,12 +35,11 @@ function normalizeBaseUrl(value: string) {
   return value.trim().replace(/\/+$/, '')
 }
 
-function sanitizeLines(lines: string[], maxLines: number) {
+function sanitizeLines(lines: string[]) {
   return lines
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
-    .slice(0, maxLines)
 }
 
 function extractJsonCandidates(raw: string) {
@@ -58,16 +58,16 @@ function extractJsonCandidates(raw: string) {
   return Array.from(new Set(candidates.filter(Boolean)))
 }
 
-function parseLinesFromText(raw: string, maxLines: number) {
+function parseLinesFromText(raw: string) {
   for (const candidate of extractJsonCandidates(raw)) {
     try {
       const parsed = JSON.parse(candidate) as { lines?: string[] } | string[]
       if (Array.isArray(parsed)) {
-        const lines = sanitizeLines(parsed.filter((line): line is string => typeof line === 'string'), maxLines)
+        const lines = sanitizeLines(parsed.filter((line): line is string => typeof line === 'string'))
         if (lines.length > 0) return lines
       }
       if (!Array.isArray(parsed) && parsed && typeof parsed === 'object' && Array.isArray(parsed.lines)) {
-        const lines = sanitizeLines(parsed.lines.filter((line: unknown): line is string => typeof line === 'string'), maxLines)
+        const lines = sanitizeLines(parsed.lines.filter((line: unknown): line is string => typeof line === 'string'))
         if (lines.length > 0) return lines
       }
     } catch {
@@ -75,27 +75,23 @@ function parseLinesFromText(raw: string, maxLines: number) {
     }
   }
 
-  return sanitizeLines(raw.split(/\r?\n+/), maxLines)
+  return sanitizeLines(raw.split(/\r?\n+/))
 }
 
 function extractChatContent(payload: ChatCompletionsResponse) {
   const content = payload.choices?.[0]?.message?.content
   if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return content.map((part) => part.text || '').join('\\n')
-  }
+  if (Array.isArray(content)) return content.map((part) => part.text || '').join('\n')
   return ''
 }
 
 function extractResponsesContent(payload: ResponsesApiResponse) {
   if (typeof payload.output_text === 'string' && payload.output_text.trim()) return payload.output_text
-
   return (payload.output || [])
     .flatMap((item) => item.content || [])
     .map((part) => part.text || '')
-    .join('\\n')
+    .join('\n')
 }
-
 
 function buildResponsesReasoning(config: GameConfig) {
   return config.ai.reasoningEffort === 'default' ? undefined : { effort: config.ai.reasoningEffort }
@@ -127,11 +123,12 @@ async function parseErrorMessage(response: Response) {
 function buildSystemPrompt(config: GameConfig) {
   return [
     'You are the scenario writer for a daily raising visual novel.',
-    'Write the next micro-scene that happens right after the player action.',
+    'Write the next single micro-scene beat that happens right after the player action.',
     'Write in Simplified Chinese.',
-    'Return JSON only, using the exact shape {"lines":["line 1","line 2"]}.',
-    `Return ${Math.max(1, config.ai.maxLines - 1)} to ${config.ai.maxLines} lines.`,
-    'Each line should be 1 to 2 sentences and suitable for step-by-step reveal.',
+    'Return JSON only, using the exact shape {"lines":["line 1"]}.',
+    'Return exactly 1 line.',
+    'That line should be 1 to 2 sentences and suitable for one-step reveal.',
+    'Continue naturally from the already generated lines if any are provided.',
     'Keep the tone grounded, intimate, and slightly unpredictable, but do not jump too far ahead in the plot.',
     'Do not use Markdown. Do not explain your answer. Do not include any fields other than lines.',
     config.ai.promptNotes.trim(),
@@ -139,7 +136,7 @@ function buildSystemPrompt(config: GameConfig) {
 }
 
 function buildUserPrompt(params: GenerateActionStoryParams) {
-  const { action, config, state, triggeredEvents } = params
+  const { action, config, state, triggeredEvents, previousLines = [] } = params
   const currentScene = config.scenes.find((scene) => scene.id === state.currentSceneId)
   const stats = config.stats.map((stat) => ({
     id: stat.id,
@@ -177,17 +174,19 @@ function buildUserPrompt(params: GenerateActionStoryParams) {
       description: event.description,
       effects: event.effects,
     })),
+    previouslyGeneratedLines: previousLines,
   }
 
   return [
-    'Use the JSON context below to generate the immediate follow-up scene after the action.',
-    "Focus on the girl's reaction, the atmosphere, relationship changes, and specific daily-life details.",
-    'If scriptedLines are present, treat them as factual and stylistic hints, but avoid copying them mechanically.',
+    'Use the JSON context below to generate exactly one new follow-up line after the action.',
+    'Focus on the girl\'s reaction, the atmosphere, relationship changes, and specific daily-life details.',
+    'If previouslyGeneratedLines is not empty, continue after them instead of restarting the scene.',
+    'Do not summarize multiple beats into a long paragraph; only write the next beat.',
     JSON.stringify(context, null, 2),
   ].join('\n\n')
 }
 
-export async function generateActionStoryLines(params: GenerateActionStoryParams) {
+export async function generateActionStoryLine(params: GenerateActionStoryParams) {
   const { config, signal } = params
   const endpointBase = normalizeBaseUrl(config.ai.apiBaseUrl)
   const systemPrompt = buildSystemPrompt(config)
@@ -211,7 +210,7 @@ export async function generateActionStoryLines(params: GenerateActionStoryParams
             },
           ],
           ...(buildResponsesReasoning(config) ? { reasoning: buildResponsesReasoning(config) } : {}),
-          max_output_tokens: 500,
+          max_output_tokens: 180,
         }
       : {
           model: config.ai.model,
@@ -221,7 +220,7 @@ export async function generateActionStoryLines(params: GenerateActionStoryParams
           ],
           ...(buildChatReasoningEffort(config) ? { reasoning_effort: buildChatReasoningEffort(config) } : {}),
           ...(shouldSendTemperature(config) ? { temperature: config.ai.temperature } : {}),
-          max_tokens: 500,
+          max_tokens: 180,
         }
 
   const response = await fetch(endpoint, {
@@ -240,11 +239,11 @@ export async function generateActionStoryLines(params: GenerateActionStoryParams
 
   const data = (await response.json()) as ResponsesApiResponse | ChatCompletionsResponse
   const rawText = config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
-  const lines = parseLinesFromText(rawText, config.ai.maxLines)
+  const line = parseLinesFromText(rawText)[0]
 
-  if (lines.length === 0) {
-    throw new Error('AI returned no usable story lines.')
+  if (!line) {
+    throw new Error('AI returned no usable story line.')
   }
 
-  return lines
+  return line
 }

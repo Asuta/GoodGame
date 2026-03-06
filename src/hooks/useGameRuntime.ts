@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   applyEffects,
@@ -12,13 +12,22 @@ import {
   type NarrativeChoice,
   type StoryEvent,
 } from '@/lib/gameCore'
-import { canUseAiStory, generateActionStoryLines } from '@/lib/aiStory'
+import { canUseAiStory, generateActionStoryLine } from '@/lib/aiStory'
+
+type AiDialogueSession = {
+  action: DailyAction
+  state: GameState
+  triggeredEvents: StoryEvent[]
+  generatedLines: string[]
+  maxLines: number
+}
 
 type DialoguePacket = {
   source: string
   sceneId?: string
   lines: string[]
   choices: NarrativeChoice[]
+  aiSession?: AiDialogueSession
 }
 
 type DialogueState = {
@@ -27,13 +36,14 @@ type DialogueState = {
   pending: DialoguePacket[]
 }
 
-function packetFromAction(action: DailyAction, linesOverride?: string[]): DialoguePacket {
+function packetFromAction(action: DailyAction, linesOverride?: string[], aiSession?: AiDialogueSession): DialoguePacket {
   const lines = linesOverride?.length ? linesOverride : action.narrative?.lines?.length ? action.narrative.lines : [action.flavor]
   return {
     source: `日常: ${action.name}`,
     sceneId: action.sceneId,
     lines,
     choices: action.narrative?.choices || [],
+    aiSession,
   }
 }
 
@@ -98,8 +108,57 @@ export function useGameRuntime(config: GameConfig) {
     }))
   }
 
-  const handleDialogueNext = () => {
-    if (!dialogue) return
+  const finishDialogue = (pending: DialoguePacket[]) => {
+    if (pending.length > 0) {
+      const [nextPacket, ...rest] = pending
+      jumpToPacket(nextPacket, rest)
+      return
+    }
+
+    closeDialogue()
+  }
+
+  const requestAiLine = async (session: AiDialogueSession) => {
+    const requestId = aiRequestIdRef.current + 1
+    aiRequestIdRef.current = requestId
+    aiAbortRef.current?.abort()
+    const controller = new AbortController()
+    aiAbortRef.current = controller
+
+    setAiError(null)
+    setIsGeneratingNarrative(true)
+
+    try {
+      const line = await generateActionStoryLine({
+        action: session.action,
+        config,
+        state: session.state,
+        triggeredEvents: session.triggeredEvents,
+        previousLines: session.generatedLines,
+        signal: controller.signal,
+      })
+
+      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return null
+      return line
+    } catch (error) {
+      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return null
+      const message = error instanceof Error ? error.message : 'AI narrative request failed.'
+      setAiError(message)
+      setGame((prev) => ({
+        ...prev,
+        log: [...prev.log, `AI fallback: ${message}`],
+      }))
+      return null
+    } finally {
+      if (aiRequestIdRef.current === requestId) {
+        aiAbortRef.current = null
+        setIsGeneratingNarrative(false)
+      }
+    }
+  }
+
+  const handleDialogueNext = async () => {
+    if (!dialogue || isGeneratingNarrative) return
 
     const canAdvanceLine = dialogue.lineIndex < dialogue.packet.lines.length - 1
     if (canAdvanceLine) {
@@ -111,13 +170,25 @@ export function useGameRuntime(config: GameConfig) {
 
     if (dialogue.packet.choices.length > 0) return
 
-    if (dialogue.pending.length > 0) {
-      const [nextPacket, ...rest] = dialogue.pending
-      jumpToPacket(nextPacket, rest)
+    const session = dialogue.packet.aiSession
+    if (session && session.generatedLines.length < session.maxLines) {
+      setGame((prev) => ({ ...prev, currentMessage: 'AI is drafting the next line...' }))
+      const nextLine = await requestAiLine(session)
+      if (!nextLine) {
+        finishDialogue(dialogue.pending)
+        return
+      }
+
+      const nextSession: AiDialogueSession = {
+        ...session,
+        generatedLines: [...session.generatedLines, nextLine],
+      }
+
+      jumpToPacket(packetFromAction(session.action, [nextLine], nextSession), dialogue.pending)
       return
     }
 
-    closeDialogue()
+    finishDialogue(dialogue.pending)
   }
 
   const handleDialogueChoice = (choice: NarrativeChoice) => {
@@ -197,51 +268,38 @@ export function useGameRuntime(config: GameConfig) {
       return
     }
 
-    const requestId = aiRequestIdRef.current + 1
-    aiRequestIdRef.current = requestId
-    aiAbortRef.current?.abort()
-    const controller = new AbortController()
-    aiAbortRef.current = controller
-
-    setAiError(null)
-    setIsGeneratingNarrative(true)
     setGame({
       ...resolved.state,
-      currentMessage: 'AI is drafting the next scene...',
+      currentMessage: 'AI is drafting the next line...',
     })
 
-    try {
-      const aiLines = await generateActionStoryLines({
-        action,
-        config,
-        state: resolved.state,
-        triggeredEvents: resolved.triggeredEvents,
-        signal: controller.signal,
-      })
+    const firstLine = await requestAiLine({
+      action,
+      state: resolved.state,
+      triggeredEvents: resolved.triggeredEvents,
+      generatedLines: [],
+      maxLines: Math.max(1, config.ai.maxLines),
+    })
 
-      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return
-
-      setGame((prev) => ({
-        ...prev,
-        log: [...prev.log, `AI scene: ${action.name}`],
-      }))
-      openPackets([packetFromAction(action, aiLines), ...resolved.triggeredEvents.map(packetFromEvent)])
-    } catch (error) {
-      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return
-
-      const message = error instanceof Error ? error.message : 'AI narrative request failed.'
-      setAiError(message)
-      setGame({
-        ...resolved.state,
-        log: [...resolved.state.log, `AI fallback: ${message}`],
-      })
+    if (!firstLine) {
       openPackets(fallbackPackets)
-    } finally {
-      if (aiRequestIdRef.current === requestId) {
-        aiAbortRef.current = null
-        setIsGeneratingNarrative(false)
-      }
+      return
     }
+
+    setGame((prev) => ({
+      ...prev,
+      log: [...prev.log, `AI scene: ${action.name}`],
+    }))
+
+    const session: AiDialogueSession = {
+      action,
+      state: resolved.state,
+      triggeredEvents: resolved.triggeredEvents,
+      generatedLines: [firstLine],
+      maxLines: Math.max(1, config.ai.maxLines),
+    }
+
+    openPackets([packetFromAction(action, [firstLine], session), ...resolved.triggeredEvents.map(packetFromEvent)])
   }
 
   const handleEndDay = () => {
