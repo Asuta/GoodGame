@@ -1,4 +1,4 @@
-﻿# GoodGame
+﻿# GoodGame Editor
 
 一个基于 React + TypeScript + Vite 的文字冒险 / 养成编辑器 Demo。
 
@@ -182,3 +182,4 @@ npm run preview
 - 接入素材上传或本地文件选择
 - 接入后端，实现多人协作与云端存储
 - 增加更多玩法系统，例如好感线、结局、任务、时间段等
+

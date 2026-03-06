@@ -1,7 +1,8 @@
-{
-  "name": "goodgamerepo",
+﻿{
+  "name": "goodgame-editor",
   "private": true,
   "version": "0.0.0",
+  "description": "Interactive narrative raising game editor demo built with React, TypeScript, and Vite.",
   "type": "module",
   "scripts": {
     "dev": "vite",
