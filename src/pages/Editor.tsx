@@ -1,41 +1,13 @@
 import { Link } from 'react-router-dom'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 
+import { BaseTab } from '@/components/editor/BaseTab'
+import { DataTab } from '@/components/editor/DataTab'
+import { Field, linesToText, textToLines } from '@/components/editor/shared'
+import { MediaTab } from '@/components/editor/MediaTab'
+import { StatsTab } from '@/components/editor/StatsTab'
 import { useGameConfig } from '@/hooks/useGameConfig'
-import { DEFAULT_CONFIG, nextId, type GameConfig, type Operator } from '@/lib/gameCore'
-
-function textToLines(value: string) {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-}
-
-function linesToText(lines: string[] | undefined) {
-  return (lines || []).join('\n')
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-sm text-slate-700">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
-  )
-}
-
-function updateConfigText(value: string, setConfig: React.Dispatch<React.SetStateAction<GameConfig>>, setError: (value: string) => void) {
-  setError('')
-  try {
-    const parsed = JSON.parse(value) as GameConfig
-    if (!parsed.title || !Array.isArray(parsed.stats) || !Array.isArray(parsed.dailyActions) || !Array.isArray(parsed.events)) {
-      throw new Error('invalid')
-    }
-    setConfig(parsed)
-  } catch {
-    setError('JSON 结构无效，请检查后重试。')
-  }
-}
+import { DEFAULT_CONFIG, nextId, type Operator } from '@/lib/gameCore'
 
 export default function Editor() {
   const { config, setConfig, resetConfig } = useGameConfig()
@@ -84,235 +56,15 @@ export default function Editor() {
         </div>
 
         {tab === 'base' && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="游戏标题">
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2"
-                value={config.title}
-                onChange={(e) => setConfig((prev) => ({ ...prev, title: e.target.value }))}
-              />
-            </Field>
-            <Field label="副标题">
-              <input
-                className="rounded-lg border border-slate-300 px-3 py-2"
-                value={config.subtitle}
-                onChange={(e) => setConfig((prev) => ({ ...prev, subtitle: e.target.value }))}
-              />
-            </Field>
-            <Field label="每日行动力">
-              <input
-                type="number"
-                min={1}
-                className="rounded-lg border border-slate-300 px-3 py-2"
-                value={config.maxEnergy}
-                onChange={(e) => setConfig((prev) => ({ ...prev, maxEnergy: Math.max(1, Number(e.target.value) || 1) }))}
-              />
-            </Field>
-            <Field label="默认场景">
-              <select
-                className="rounded-lg border border-slate-300 px-3 py-2"
-                value={config.defaultSceneId}
-                onChange={(e) => setConfig((prev) => ({ ...prev, defaultSceneId: e.target.value }))}
-              >
-                {config.scenes.map((scene) => (
-                  <option key={scene.id} value={scene.id}>
-                    {scene.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="md:col-span-2">
-              <Field label="序章文本（每行一段）">
-                <textarea
-                  rows={8}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                  value={config.prologue.join('\n')}
-                  onChange={(e) => setConfig((prev) => ({ ...prev, prologue: e.target.value.split('\n').filter(Boolean) }))}
-                />
-              </Field>
-            </div>
-          </div>
+          <BaseTab config={config} setConfig={setConfig} />
         )}
 
         {tab === 'media' && (
-          <div className="space-y-3">
-            {config.scenes.map((scene) => (
-              <div key={scene.id} className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-2">
-                <Field label={`场景名 (${scene.id})`}>
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={scene.name}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, name: e.target.value } : item)) }))
-                    }
-                  />
-                </Field>
-                <Field label="背景图 URL">
-                  <input
-                    placeholder="https://..."
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={scene.backgroundUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, backgroundUrl: e.target.value } : item)),
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="角色立绘 URL">
-                  <input
-                    placeholder="https://..."
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={scene.characterUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, characterUrl: e.target.value } : item)),
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="头像 URL（预留）">
-                  <input
-                    placeholder="https://..."
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={scene.portraitUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, portraitUrl: e.target.value } : item)),
-                      }))
-                    }
-                  />
-                </Field>
-                <button
-                  className="h-fit rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
-                  onClick={() => setConfig((prev) => ({ ...prev, scenes: prev.scenes.filter((item) => item.id !== scene.id) }))}
-                >
-                  删除场景
-                </button>
-              </div>
-            ))}
-            <button
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white"
-              onClick={() =>
-                setConfig((prev) => ({
-                  ...prev,
-                  scenes: [...prev.scenes, { id: nextId('scene'), name: '新场景', backgroundUrl: '', characterUrl: '', portraitUrl: '' }],
-                }))
-              }
-            >
-              新增场景
-            </button>
-          </div>
+          <MediaTab config={config} setConfig={setConfig} />
         )}
 
         {tab === 'stats' && (
-          <div className="space-y-3">
-            {config.stats.map((stat) => (
-              <div key={stat.id} className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-2">
-                <Field label={`属性名 (${stat.id})`}>
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={stat.name}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, stats: prev.stats.map((item) => (item.id === stat.id ? { ...item, name: e.target.value } : item)) }))}
-                  />
-                </Field>
-                <Field label="默认值">
-                  <input
-                    type="number"
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={stat.defaultValue}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, stats: prev.stats.map((item) => (item.id === stat.id ? { ...item, defaultValue: Number(e.target.value) } : item)) }))
-                    }
-                  />
-                </Field>
-                <Field label="最小值">
-                  <input
-                    type="number"
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={stat.min}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, stats: prev.stats.map((item) => (item.id === stat.id ? { ...item, min: Number(e.target.value) } : item)) }))}
-                  />
-                </Field>
-                <Field label="最大值">
-                  <input
-                    type="number"
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={stat.max}
-                    onChange={(e) => setConfig((prev) => ({ ...prev, stats: prev.stats.map((item) => (item.id === stat.id ? { ...item, max: Number(e.target.value) } : item)) }))}
-                  />
-                </Field>
-                <Field label="说明">
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    value={stat.description}
-                    onChange={(e) =>
-                      setConfig((prev) => ({ ...prev, stats: prev.stats.map((item) => (item.id === stat.id ? { ...item, description: e.target.value } : item)) }))
-                    }
-                  />
-                </Field>
-                <button
-                  className="h-fit rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
-                  onClick={() =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      stats: prev.stats.filter((item) => item.id !== stat.id),
-                      dailyActions: prev.dailyActions.map((action) => ({
-                        ...action,
-                        effects: action.effects.filter((effect) => effect.statId !== stat.id),
-                        narrative: action.narrative
-                          ? {
-                              lines: action.narrative.lines,
-                              choices: action.narrative.choices
-                                .filter((choice) => choice.statId !== stat.id)
-                                .map((choice) => ({
-                                  ...choice,
-                                  successEffects: choice.successEffects.filter((effect) => effect.statId !== stat.id),
-                                  failEffects: choice.failEffects.filter((effect) => effect.statId !== stat.id),
-                                })),
-                            }
-                          : undefined,
-                      })),
-                      events: prev.events.map((event) => ({
-                        ...event,
-                        conditions: event.conditions.filter((condition) => condition.statId !== stat.id),
-                        effects: event.effects.filter((effect) => effect.statId !== stat.id),
-                        narrative: event.narrative
-                          ? {
-                              lines: event.narrative.lines,
-                              choices: event.narrative.choices
-                                .filter((choice) => choice.statId !== stat.id)
-                                .map((choice) => ({
-                                  ...choice,
-                                  successEffects: choice.successEffects.filter((effect) => effect.statId !== stat.id),
-                                  failEffects: choice.failEffects.filter((effect) => effect.statId !== stat.id),
-                                })),
-                            }
-                          : undefined,
-                      })),
-                    }))
-                  }
-                >
-                  删除属性
-                </button>
-              </div>
-            ))}
-
-            <button
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white"
-              onClick={() =>
-                setConfig((prev) => ({
-                  ...prev,
-                  stats: [...prev.stats, { id: nextId('stat'), name: '新属性', min: 0, max: 100, defaultValue: 10, description: '请填写说明' }],
-                }))
-              }
-            >
-              新增属性
-            </button>
-          </div>
+          <StatsTab config={config} setConfig={setConfig} />
         )}
 
         {tab === 'actions' && (
@@ -1269,24 +1021,14 @@ export default function Editor() {
         )}
 
         {tab === 'data' && (
-          <div className="space-y-3">
-            <Field label="导出 JSON">
-              <textarea readOnly rows={10} className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2" value={JSON.stringify(config, null, 2)} />
-            </Field>
-
-            <Field label="导入 JSON">
-              <textarea
-                rows={8}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-              />
-            </Field>
-            <button className="rounded-lg bg-emerald-700 px-3 py-1.5 text-sm text-white" onClick={() => updateConfigText(importText, setConfig, setImportError)}>
-              应用导入
-            </button>
-            {importError && <p className="text-sm text-rose-700">{importError}</p>}
-          </div>
+          <DataTab
+            configText={JSON.stringify(config, null, 2)}
+            importError={importError}
+            importText={importText}
+            onImportTextChange={setImportText}
+            setConfig={setConfig}
+            setImportError={setImportError}
+          />
         )}
       </section>
     </main>
