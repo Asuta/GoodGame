@@ -92,7 +92,7 @@ export function useGameRuntime(config: GameConfig) {
   const inPrologue = game.prologueIndex < config.prologue.length
   const isDialogueOpen = dialogue !== null
   const unlockedCount = game.unlockedEventIds.length
-  const currentDialogueLine = dialogue ? dialogue.packet.lines[dialogue.lineIndex] : game.currentMessage
+  const currentDialogueLine = isGeneratingNarrative ? game.currentMessage : dialogue ? dialogue.packet.lines[dialogue.lineIndex] : game.currentMessage
   const canShowChoices = dialogue ? dialogue.lineIndex >= dialogue.packet.lines.length - 1 && dialogue.packet.choices.length > 0 : false
   const canShowAiSuggestions =
     dialogue ? dialogue.lineIndex >= dialogue.packet.lines.length - 1 && (dialogue.packet.aiSuggestions?.length || 0) > 0 : false
@@ -108,7 +108,10 @@ export function useGameRuntime(config: GameConfig) {
     }))
   }
 
-  const closeDialogue = () => setDialogue(null)
+  const closeDialogue = () => {
+    setDialogue(null)
+    setGame((prev) => ({ ...prev, currentMessage: '' }))
+  }
 
   const jumpToPacket = (packet: DialoguePacket, pending: DialoguePacket[]) => {
     setDialogue({ packet, lineIndex: 0, pending })
@@ -219,6 +222,7 @@ export function useGameRuntime(config: GameConfig) {
   }
 
   const finalizeAiDialogue = async (session: AiDialogueSession, pending: DialoguePacket[]) => {
+    setGame((prev) => ({ ...prev, currentMessage: 'AI is evaluating the interaction...' }))
     const evaluation = await requestAiEvaluation(session)
     const effects = evaluation?.effects || []
     const statNames = new Map(config.stats.map((stat) => [stat.id, stat.name]))

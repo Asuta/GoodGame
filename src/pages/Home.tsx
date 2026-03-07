@@ -367,7 +367,9 @@ export default function Home() {
 
             <div className="mt-3 flex flex-wrap gap-2">
               {dialogue ? (
-                canShowChoices && !isTyping ? (
+                isGeneratingNarrative ? (
+                  <p className="text-xs text-cyan-200">AI is generating the next line...</p>
+                ) : canShowChoices && !isTyping ? (
                   dialogue.packet.choices.map((choice) => (
                     <button
                       key={choice.id}
