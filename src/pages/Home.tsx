@@ -27,11 +27,13 @@ export default function Home() {
   const [typingSpeedId, setTypingSpeedId] = useState<(typeof TYPING_SPEED_OPTIONS)[number]['id']>('normal')
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [customIntent, setCustomIntent] = useState('')
   const {
     game,
     currentScene,
     currentDialogueLine,
     canShowChoices,
+    canShowAiSuggestions,
     dialogue,
     inPrologue,
     isDialogueOpen,
@@ -39,6 +41,7 @@ export default function Home() {
     aiError,
     unlockedCount,
     handleAdvancePrologue,
+    handleAiIntent,
     handleDialogueChoice,
     handleDialogueNext,
     handleDoAction,
@@ -46,8 +49,16 @@ export default function Home() {
     handleRestart,
   } = useGameRuntime(config)
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
-  const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '...', typingDelay)
-
+  const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '', typingDelay)
+  const isAiDialogueEnding = Boolean(
+    dialogue &&
+      dialogue.packet.aiSession &&
+      dialogue.lineIndex >= dialogue.packet.lines.length - 1 &&
+      dialogue.packet.aiSession.generatedLines.length >= dialogue.packet.aiSession.maxLines &&
+      !canShowChoices &&
+      !canShowAiSuggestions,
+  )
+  const dialogueButtonLabel = isGeneratingNarrative ? '\u751f\u6210\u4e2d...' : isAiDialogueEnding ? '\u7ed3\u675f\u5bf9\u8bdd' : isTyping ? '\u663e\u793a\u5168\u6587' : '\u4e0b\u4e00\u6b65'
 
   const settingsPanel = settingsOpen ? (
     <section className="mb-4 rounded-2xl border border-cyan-200/60 bg-white/88 p-4 shadow-lg shadow-cyan-100/40 backdrop-blur">
@@ -129,6 +140,23 @@ export default function Home() {
           </select>
         </label>
 
+        <label className="flex flex-col gap-1 text-sm text-slate-700">
+          <span className="font-medium">Max AI turns</span>
+          <input
+            className="rounded-xl border border-slate-300 px-3 py-2"
+            type="number"
+            min={1}
+            max={8}
+            value={config.ai.maxLines}
+            onChange={(e) =>
+              setConfig((prev) => ({
+                ...prev,
+                ai: { ...prev.ai, maxLines: Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 1))) },
+              }))
+            }
+          />
+        </label>
+
         <label className="md:col-span-2 flex flex-col gap-1 text-sm text-slate-700">
           <span className="font-medium">API Key</span>
           <input
@@ -148,7 +176,7 @@ export default function Home() {
     if (!autoPlayEnabled || isTyping) return
 
     if (dialogue) {
-      if (canShowChoices) return
+      if (canShowChoices || canShowAiSuggestions) return
       const timer = window.setTimeout(() => {
         handleDialogueNext()
       }, AUTO_PLAY_DELAY)
@@ -162,7 +190,12 @@ export default function Home() {
     }, AUTO_PLAY_DELAY)
 
     return () => window.clearTimeout(timer)
-  }, [autoPlayEnabled, canShowChoices, dialogue, handleAdvancePrologue, handleDialogueNext, inPrologue, isTyping])
+  }, [autoPlayEnabled, canShowAiSuggestions, canShowChoices, dialogue, handleAdvancePrologue, handleDialogueNext, inPrologue, isTyping])
+
+
+  useEffect(() => {
+    setCustomIntent('')
+  }, [dialogue?.packet.source, dialogue?.packet.lines[0]])
 
   const handleDialoguePanelClick = () => {
     if (isTyping) {
@@ -348,9 +381,48 @@ export default function Home() {
                       {choice.label}
                     </button>
                   ))
+                ) : canShowAiSuggestions && !isTyping ? (
+                  <>
+                    {(dialogue.packet.aiSuggestions || []).map((choice) => (
+                      <button
+                        key={choice}
+                        className="rounded-lg border border-cyan-400/60 bg-slate-800 px-3 py-1.5 text-xs text-cyan-100 hover:bg-slate-700"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void handleAiIntent(choice)
+                        }}
+                        type="button"
+                      >
+                        {choice}
+                      </button>
+                    ))}
+                    <form
+                      className="flex min-w-[260px] flex-1 gap-2"
+                      onClick={(event) => event.stopPropagation()}
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        const value = customIntent.trim()
+                        if (!value) return
+                        void handleAiIntent(value)
+                        setCustomIntent('')
+                      }}
+                    >
+                      <input
+                        className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
+                        onChange={(event) => setCustomIntent(event.target.value)}
+                        placeholder={'\u8f93\u5165\u4f60\u60f3\u505a\u7684\u4e8b...'}
+                        type="text"
+                        value={customIntent}
+                      />
+                      <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white" type="submit">
+                        {'\u53d1\u9001'}
+                      </button>
+                    </form>
+                  </>
                 ) : (
                   <button
-                    className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold"
+                    className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isGeneratingNarrative}
                     onClick={(event) => {
                       event.stopPropagation()
                       if (isTyping) {
@@ -361,7 +433,7 @@ export default function Home() {
                     }}
                     type="button"
                   >
-                    下一步
+                    {dialogueButtonLabel}
                   </button>
                 )
               ) : isGeneratingNarrative ? (

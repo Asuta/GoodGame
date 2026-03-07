@@ -1,4 +1,4 @@
-import type { Effect, EventCondition, GameConfig, GameState, Narrative, NarrativeChoice, StoryEvent } from './types'
+﻿import type { Effect, EventCondition, GameConfig, GameState, Narrative, NarrativeChoice, StoryEvent } from './types'
 
 export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -24,7 +24,7 @@ export function createInitialGameState(config: GameConfig): GameState {
     unlockedEventIds: [],
     dailyTriggeredEventIds: [],
     currentSceneId: config.defaultSceneId || config.scenes[0]?.id || '',
-    currentMessage: config.prologue[0] ?? '游戏开始。',
+    currentMessage: '',
     log: ['游戏开始。完成序章后将进入每日循环。'],
   }
 }
@@ -142,3 +142,4 @@ export function reconcileGameState(prev: GameState, config: GameConfig): GameSta
     dailyTriggeredEventIds: prev.dailyTriggeredEventIds.filter((id) => config.events.some((event) => event.id === id)),
   }
 }
+
