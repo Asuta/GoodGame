@@ -12,7 +12,14 @@ import {
   type NarrativeChoice,
   type StoryEvent,
 } from '@/lib/gameCore'
-import { canUseAiStory, evaluateActionInteraction, generateActionStoryTurn } from '@/lib/aiStory'
+import {
+  buildActionStoryTurnPreview,
+  buildInteractionEvaluationPreview,
+  canUseAiStory,
+  evaluateActionInteraction,
+  generateActionStoryTurn,
+  type AiRequestPreview,
+} from '@/lib/aiStory'
 
 type AiDialogueSession = {
   action: DailyAction
@@ -71,6 +78,7 @@ export function useGameRuntime(config: GameConfig) {
   const [dialogue, setDialogue] = useState<DialogueState | null>(null)
   const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [lastAiRequestPreview, setLastAiRequestPreview] = useState<AiRequestPreview | null>(null)
   const aiAbortRef = useRef<AbortController | null>(null)
   const aiRequestIdRef = useRef(0)
 
@@ -96,6 +104,39 @@ export function useGameRuntime(config: GameConfig) {
   const canShowChoices = dialogue ? dialogue.lineIndex >= dialogue.packet.lines.length - 1 && dialogue.packet.choices.length > 0 : false
   const canShowAiSuggestions =
     dialogue ? dialogue.lineIndex >= dialogue.packet.lines.length - 1 && (dialogue.packet.aiSuggestions?.length || 0) > 0 : false
+
+  const nextAiRequestPreview = useMemo(() => {
+    const session = dialogue?.packet.aiSession
+    if (!session) return null
+
+    const atDialogueEnd = dialogue.lineIndex >= dialogue.packet.lines.length - 1
+    const shouldEvaluate =
+      session.generatedLines.length >= session.maxLines ||
+      (atDialogueEnd && !canShowChoices && !canShowAiSuggestions)
+
+    if (shouldEvaluate) {
+      return buildInteractionEvaluationPreview({
+        action: session.action,
+        config,
+        state: {
+          ...session.state,
+          log: game.log,
+          currentMessage: game.currentMessage,
+        },
+        generatedLines: session.generatedLines,
+        playerIntents: session.playerIntents,
+      })
+    }
+
+    return buildActionStoryTurnPreview({
+      action: session.action,
+      config,
+      state: session.state,
+      triggeredEvents: [],
+      previousLines: session.generatedLines,
+      playerIntent: '__WAITING_FOR_PLAYER_INTENT__',
+    })
+  }, [canShowAiSuggestions, canShowChoices, config, dialogue, game.currentMessage, game.log])
 
   const openPackets = (packets: DialoguePacket[]) => {
     if (!packets.length) return
@@ -157,6 +198,15 @@ export function useGameRuntime(config: GameConfig) {
   }
 
   const requestAiTurn = async (session: AiDialogueSession, playerIntent?: string) => {
+    const preview = buildActionStoryTurnPreview({
+      action: session.action,
+      config,
+      state: session.state,
+      triggeredEvents: [],
+      previousLines: session.generatedLines,
+      playerIntent,
+    })
+    setLastAiRequestPreview(preview)
     const { controller, requestId, timeoutId, wasTimedOut } = startAiRequest()
 
     try {
@@ -188,6 +238,18 @@ export function useGameRuntime(config: GameConfig) {
   }
 
   const requestAiEvaluation = async (session: AiDialogueSession) => {
+    const preview = buildInteractionEvaluationPreview({
+      action: session.action,
+      config,
+      state: {
+        ...session.state,
+        log: game.log,
+        currentMessage: game.currentMessage,
+      },
+      generatedLines: session.generatedLines,
+      playerIntents: session.playerIntents,
+    })
+    setLastAiRequestPreview(preview)
     const { controller, requestId, timeoutId, wasTimedOut } = startAiRequest()
 
     try {
@@ -471,6 +533,8 @@ export function useGameRuntime(config: GameConfig) {
     isDialogueOpen,
     isGeneratingNarrative,
     aiError,
+    nextAiRequestPreview,
+    lastAiRequestPreview,
     unlockedCount,
     handleAdvancePrologue,
     handleAiIntent,

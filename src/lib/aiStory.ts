@@ -66,6 +66,15 @@ export type AiInteractionEvaluation = {
   summary: string
 }
 
+export type AiRequestPreview = {
+  kind: 'story-turn' | 'interaction-evaluation'
+  endpoint: string
+  systemPrompt: string
+  userPrompt: string
+  context: Record<string, unknown>
+  payload: Record<string, unknown>
+}
+
 export function canUseAiStory(config: GameConfig) {
   return Boolean(config.ai.enabled && config.ai.apiBaseUrl.trim() && config.ai.apiKey.trim() && config.ai.model.trim())
 }
@@ -198,9 +207,9 @@ function buildStorySystemPrompt(config: GameConfig) {
   ].join('\n')
 }
 
-function buildStoryUserPrompt(params: GenerateActionStoryParams) {
+function buildStoryContext(params: GenerateActionStoryParams) {
   const { action, config, state, triggeredEvents, previousLines = [], playerIntent } = params
-  const context = {
+  return {
     ...buildBaseContext(action, config, state),
     recentStory: state.log.slice(-config.ai.recentLogLimit),
     triggeredEvents: triggeredEvents.map((event) => ({
@@ -212,6 +221,10 @@ function buildStoryUserPrompt(params: GenerateActionStoryParams) {
     previouslyGeneratedLines: previousLines,
     playerIntent: playerIntent || null,
   }
+}
+
+function buildStoryUserPrompt(params: GenerateActionStoryParams) {
+  const context = buildStoryContext(params)
 
   return [
     'Use the JSON context below to generate exactly one new line and two suggested next actions.',
@@ -238,14 +251,18 @@ function buildEvaluationSystemPrompt() {
   ].join('\n')
 }
 
-function buildEvaluationUserPrompt(params: EvaluateActionInteractionParams) {
+function buildEvaluationContext(params: EvaluateActionInteractionParams) {
   const { action, config, state, generatedLines, playerIntents } = params
-  const context = {
+  return {
     ...buildBaseContext(action, config, state),
     recentStory: state.log.slice(-config.ai.recentLogLimit),
     interactionTranscript: generatedLines,
     playerIntents,
   }
+}
+
+function buildEvaluationUserPrompt(params: EvaluateActionInteractionParams) {
+  const context = buildEvaluationContext(params)
 
   return [
     'Use the JSON context below to judge the completed interaction and decide the final stat changes.',
@@ -396,6 +413,11 @@ function parseInteractionEvaluation(rawText: string, config: GameConfig): AiInte
   }
 }
 
+function buildEndpoint(config: GameConfig) {
+  const endpointBase = normalizeBaseUrl(config.ai.apiBaseUrl)
+  return config.ai.apiMode === 'responses' ? `${endpointBase}/responses` : `${endpointBase}/chat/completions`
+}
+
 function buildRequestPayload(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number) {
   return config.ai.apiMode === 'responses'
     ? {
@@ -428,8 +450,7 @@ function buildRequestPayload(config: GameConfig, systemPrompt: string, userPromp
 }
 
 async function requestAiText(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number, signal?: AbortSignal) {
-  const endpointBase = normalizeBaseUrl(config.ai.apiBaseUrl)
-  const endpoint = config.ai.apiMode === 'responses' ? `${endpointBase}/responses` : `${endpointBase}/chat/completions`
+  const endpoint = buildEndpoint(config)
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
@@ -448,12 +469,40 @@ async function requestAiText(config: GameConfig, systemPrompt: string, userPromp
   return config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
 }
 
+export function buildActionStoryTurnPreview(params: GenerateActionStoryParams): AiRequestPreview {
+  const systemPrompt = buildStorySystemPrompt(params.config)
+  const userPrompt = buildStoryUserPrompt(params)
+  return {
+    kind: 'story-turn',
+    endpoint: buildEndpoint(params.config),
+    systemPrompt,
+    userPrompt,
+    context: buildStoryContext(params),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 220),
+  }
+}
+
+export function buildInteractionEvaluationPreview(params: EvaluateActionInteractionParams): AiRequestPreview {
+  const systemPrompt = buildEvaluationSystemPrompt()
+  const userPrompt = buildEvaluationUserPrompt(params)
+  return {
+    kind: 'interaction-evaluation',
+    endpoint: buildEndpoint(params.config),
+    systemPrompt,
+    userPrompt,
+    context: buildEvaluationContext(params),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 180),
+  }
+}
+
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
-  const rawText = await requestAiText(params.config, buildStorySystemPrompt(params.config), buildStoryUserPrompt(params), 220, params.signal)
+  const preview = buildActionStoryTurnPreview(params)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal)
   return parseStoryTurn(rawText)
 }
 
 export async function evaluateActionInteraction(params: EvaluateActionInteractionParams) {
-  const rawText = await requestAiText(params.config, buildEvaluationSystemPrompt(), buildEvaluationUserPrompt(params), 180, params.signal)
+  const preview = buildInteractionEvaluationPreview(params)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal)
   return parseInteractionEvaluation(rawText, params.config)
 }

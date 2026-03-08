@@ -27,6 +27,7 @@ export default function Home() {
   const [typingSpeedId, setTypingSpeedId] = useState<(typeof TYPING_SPEED_OPTIONS)[number]['id']>('normal')
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aiLogOpen, setAiLogOpen] = useState(false)
   const [customIntent, setCustomIntent] = useState('')
   const {
     game,
@@ -39,6 +40,8 @@ export default function Home() {
     isDialogueOpen,
     isGeneratingNarrative,
     aiError,
+    nextAiRequestPreview,
+    lastAiRequestPreview,
     unlockedCount,
     handleAdvancePrologue,
     handleAiIntent,
@@ -59,6 +62,41 @@ export default function Home() {
       !canShowAiSuggestions,
   )
   const dialogueButtonLabel = isGeneratingNarrative ? '\u751f\u6210\u4e2d...' : isAiDialogueEnding ? '\u7ed3\u675f\u5bf9\u8bdd' : isTyping ? '\u663e\u793a\u5168\u6587' : '\u4e0b\u4e00\u6b65'
+
+  const aiLogPanel = aiLogOpen ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm" onClick={() => setAiLogOpen(false)}>
+      <section
+        className="max-h-[85vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-cyan-400/30 bg-slate-950 text-slate-100 shadow-2xl shadow-cyan-950/30"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">AI Log</p>
+            <h2 className="mt-1 text-lg font-semibold">AI context inspector</h2>
+          </div>
+          <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white" onClick={() => setAiLogOpen(false)} type="button">
+            Close
+          </button>
+        </div>
+        <div className="grid max-h-[calc(85vh-80px)] gap-4 overflow-auto p-5 xl:grid-cols-2">
+          <section className="rounded-2xl border border-cyan-400/20 bg-slate-900/80 p-4">
+            <p className="text-xs uppercase tracking-[0.22em] text-cyan-300">Next request</p>
+            <p className="mt-1 text-sm text-slate-400">This is the next AI payload the game is preparing to send.</p>
+            <pre className="mt-3 max-h-[58vh] overflow-auto rounded-xl bg-slate-950/80 p-4 text-xs leading-6 text-slate-200">
+              {JSON.stringify(nextAiRequestPreview || { message: 'No pending AI request right now.' }, null, 2)}
+            </pre>
+          </section>
+          <section className="rounded-2xl border border-emerald-400/20 bg-slate-900/80 p-4">
+            <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">Last request</p>
+            <p className="mt-1 text-sm text-slate-400">This is the most recent AI payload that was actually sent.</p>
+            <pre className="mt-3 max-h-[58vh] overflow-auto rounded-xl bg-slate-950/80 p-4 text-xs leading-6 text-slate-200">
+              {JSON.stringify(lastAiRequestPreview || { message: 'No AI request has been sent yet.' }, null, 2)}
+            </pre>
+          </section>
+        </div>
+      </section>
+    </div>
+  ) : null
 
   const settingsPanel = settingsOpen ? (
     <section className="mb-4 rounded-2xl border border-cyan-200/60 bg-white/88 p-4 shadow-lg shadow-cyan-100/40 backdrop-blur">
@@ -280,6 +318,9 @@ export default function Home() {
           <a className="rounded-lg bg-slate-700 px-3 py-1.5 text-white" href="/editor" rel="noreferrer" target="_blank">
             新窗口编辑
           </a>
+          <button className="rounded-lg bg-slate-700 px-3 py-1.5 text-white" onClick={() => setAiLogOpen(true)} type="button">
+            AI log
+          </button>
           <button className="rounded-lg bg-cyan-700 px-3 py-1.5 text-white" onClick={() => setSettingsOpen((prev) => !prev)} type="button">
             {settingsOpen ? 'Hide settings' : 'AI settings'}
           </button>
@@ -293,6 +334,7 @@ export default function Home() {
       </header>
 
       {settingsPanel}
+      {aiLogPanel}
 
       <section className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <article className="overflow-hidden rounded-2xl border border-slate-900/30 bg-slate-950 shadow-2xl shadow-slate-900/35">
