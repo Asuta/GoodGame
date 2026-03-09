@@ -13,3 +13,7 @@ Original prompt: ????????????????????????????????????????????????????????????
 - 2026-03-09: Removed the `setState in effect` lint issues by switching the typewriter effect to refs and making the custom AI intent form uncontrolled with a reset key.
 - 2026-03-09: Split editor helper exports out of `shared.tsx` so Fast Refresh lint only sees component exports there.
 - 2026-03-09: Verified with `npm run lint`, `npm run build`, the web-game Playwright client screenshots for `/` and `/editor`, and a direct Playwright toggle check that switched Home from `AI 模式已开启` to `AI 模式已关闭`.
+- 2026-03-09: Reverted the default AI endpoint/key back to the previous `codex-api.packycode.com` template because the replacement endpoint was not reachable in use.
+- 2026-03-09: Added a one-off migration in `storage.ts` that automatically rewrites the retired `right.codes` AI endpoint/key back to the working template defaults when loading saved browser config.
+- 2026-03-09: Added a `恢复默认 AI 配置` button on the play-page settings panel so the current browser config can be repaired without resetting the whole game template.
+- 2026-03-09: Moved the retired AI endpoint migration from general config normalization into `loadConfig()` only, which fixed the API Key field resetting while the user edits settings.

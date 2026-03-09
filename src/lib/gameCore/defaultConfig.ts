@@ -201,8 +201,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   ai: {
     enabled: true,
     apiMode: 'responses',
-    apiBaseUrl: 'https://right.codes/codex/v1',
-    apiKey: 'sk-eed610aca8c0429f8ced854b27035676',
+    apiBaseUrl: 'https://codex-api.packycode.com/v1',
+    apiKey: 'sk-MWqWbvfrrWlAaxPdCnIrRtFsteAs1gI6',
     model: 'gpt-5.4',
     reasoningEffort: 'default',
     temperature: 1,

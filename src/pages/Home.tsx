@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { useGameConfig } from '@/hooks/useGameConfig'
 import { useTypewriterText } from '@/hooks/useTypewriterText'
-import { clamp } from '@/lib/gameCore'
+import { DEFAULT_CONFIG, clamp } from '@/lib/gameCore'
 import { useGameRuntime } from '@/hooks/useGameRuntime'
 
 function PlaceholderVisual({ label }: { label: string }) {
@@ -75,6 +75,9 @@ export default function Home() {
   }, [config.dailyActions, currentTimeSlot])
   const setAiEnabled = (enabled: boolean) => {
     setConfig((prev) => ({ ...prev, ai: { ...prev.ai, enabled } }))
+  }
+  const restoreDefaultAiConfig = () => {
+    setConfig((prev) => ({ ...prev, ai: { ...DEFAULT_CONFIG.ai } }))
   }
 
   const aiLogPanel = aiLogOpen ? (
@@ -151,6 +154,13 @@ export default function Home() {
               type="button"
             >
               关闭 AI 模式
+            </button>
+            <button
+              className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50"
+              onClick={restoreDefaultAiConfig}
+              type="button"
+            >
+              恢复默认 AI 配置
             </button>
           </div>
         </div>

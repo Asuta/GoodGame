@@ -5,6 +5,8 @@ import type { AiConfig, AiReasoningEffort, GameConfig, TimeSlotDef } from './typ
 export const CONFIG_STORAGE_KEY = 'daily-raising-editor-config-v2'
 
 const AI_REASONING_EFFORTS: AiReasoningEffort[] = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const RETIRED_AI_BASE_URLS = new Set(['https://right.codes/codex/v1'])
+const RETIRED_AI_KEYS = new Set(['sk-eed610aca8c0429f8ced854b27035676'])
 
 export function cloneConfig(config: GameConfig): GameConfig {
   return JSON.parse(JSON.stringify(config)) as GameConfig
@@ -96,7 +98,22 @@ export function loadConfig(): GameConfig {
   if (!saved) return cloneConfig(DEFAULT_CONFIG)
 
   try {
-    return normalizeGameConfig(JSON.parse(saved) as Partial<GameConfig>)
+    const parsed = JSON.parse(saved) as Partial<GameConfig>
+    const parsedApiBaseUrl = typeof parsed.ai?.apiBaseUrl === 'string' ? parsed.ai.apiBaseUrl.trim().replace(/\/+$/, '') : ''
+    const parsedApiKey = typeof parsed.ai?.apiKey === 'string' ? parsed.ai.apiKey.trim() : ''
+    const usesRetiredConnection = RETIRED_AI_BASE_URLS.has(parsedApiBaseUrl) || RETIRED_AI_KEYS.has(parsedApiKey)
+
+    if (usesRetiredConnection) {
+      parsed.ai = {
+        ...DEFAULT_CONFIG.ai,
+        ...parsed.ai,
+        apiBaseUrl: DEFAULT_CONFIG.ai.apiBaseUrl,
+        apiKey: DEFAULT_CONFIG.ai.apiKey,
+        model: DEFAULT_CONFIG.ai.model,
+      }
+    }
+
+    return normalizeGameConfig(parsed)
   } catch {
     return cloneConfig(DEFAULT_CONFIG)
   }
