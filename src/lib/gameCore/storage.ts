@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from './defaultConfig'
-import { getMaxEnergyForConfig, normalizeNarrative } from './engine'
+import { normalizeNarrative } from './engine'
 import type { AiConfig, AiReasoningEffort, GameConfig, TimeSlotDef } from './types'
 
 export const CONFIG_STORAGE_KEY = 'daily-raising-editor-config-v2'
@@ -87,10 +87,7 @@ export function normalizeGameConfig(parsed: Partial<GameConfig> | undefined): Ga
     ai: normalizeAiConfig(parsed?.ai, baseConfig.ai),
   } satisfies GameConfig
 
-  return {
-    ...config,
-    maxEnergy: getMaxEnergyForConfig(config),
-  }
+  return config
 }
 
 export function loadConfig(): GameConfig {

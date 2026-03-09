@@ -97,7 +97,6 @@ export type GameConfig = {
   title: string
   subtitle: string
   prologue: string[]
-  maxEnergy: number
   timeSlots: TimeSlotDef[]
   defaultSceneId: string
   scenes: SceneDef[]

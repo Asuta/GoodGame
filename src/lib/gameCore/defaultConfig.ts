@@ -8,12 +8,14 @@ export const DEFAULT_CONFIG: GameConfig = {
     '你把热汤推到她面前，说这里至少不会有人催她做决定。',
     '她没有立刻回答，但坐下了。这是你们共同生活的第一晚。',
   ],
-  maxEnergy: 4,
   timeSlots: [
-    { id: 'morning', label: 'Morning' },
-    { id: 'noon', label: 'Noon' },
-    { id: 'afternoon', label: 'Afternoon' },
-    { id: 'night', label: 'Night' },
+    { id: 'morning', label: '清早' },
+    { id: 'forenoon-1', label: '上午1' },
+    { id: 'forenoon-2', label: '上午2' },
+    { id: 'noon', label: '午间' },
+    { id: 'afternoon-1', label: '下午1' },
+    { id: 'afternoon-2', label: '下午2' },
+    { id: 'night', label: '夜晚' },
   ],
   defaultSceneId: 'room-night',
   scenes: [
@@ -91,7 +93,7 @@ export const DEFAULT_CONFIG: GameConfig = {
       cost: 1,
       flavor: '你听她说了很多小时候的片段。',
       sceneId: 'street-dawn',
-      availableTimeSlotIds: ['morning', 'afternoon'],
+      availableTimeSlotIds: ['morning', 'forenoon-1', 'afternoon-1', 'afternoon-2'],
       effects: [
         { statId: 'trust', delta: 7 },
         { statId: 'mood', delta: 5 },
@@ -135,7 +137,7 @@ export const DEFAULT_CONFIG: GameConfig = {
       cost: 1,
       flavor: '她把新学到的词写在纸角，反复读了几遍。',
       sceneId: 'room-night',
-      availableTimeSlotIds: ['afternoon', 'night'],
+      availableTimeSlotIds: ['afternoon-1', 'afternoon-2', 'night'],
       effects: [
         { statId: 'culture', delta: 8 },
         { statId: 'mood', delta: -2 },
@@ -164,7 +166,7 @@ export const DEFAULT_CONFIG: GameConfig = {
       cost: 1,
       flavor: '她一开始缩了缩手，后来慢慢放松下来。',
       sceneId: 'room-night',
-      availableTimeSlotIds: ['morning', 'night'],
+      availableTimeSlotIds: ['morning', 'forenoon-1', 'night'],
       effects: [
         { statId: 'health', delta: 6 },
         { statId: 'trust', delta: 3 },
@@ -201,8 +203,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   ai: {
     enabled: true,
     apiMode: 'responses',
-    apiBaseUrl: 'https://codex-api.packycode.com/v1',
-    apiKey: 'sk-MWqWbvfrrWlAaxPdCnIrRtFsteAs1gI6',
+    apiBaseUrl: 'https://right.codes/codex/v1',
+    apiKey: 'sk-eed610aca8c0429f8ced854b27035676',
     model: 'gpt-5.4',
     reasoningEffort: 'default',
     temperature: 1,

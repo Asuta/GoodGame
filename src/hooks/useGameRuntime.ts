@@ -15,9 +15,11 @@ import {
 } from '@/lib/gameCore'
 import {
   buildActionStoryTurnPreview,
+  buildFreeTimeStoryPreview,
   buildInteractionEvaluationPreview,
   canUseAiStory,
   evaluateActionInteraction,
+  generateFreeTimeStory,
   generateActionStoryTurn,
   type AiRequestPreview,
 } from '@/lib/aiStory'
@@ -71,6 +73,26 @@ function packetFromEvent(event: StoryEvent): DialoguePacket {
     sceneId: event.sceneId,
     lines,
     choices: event.narrative?.choices || [],
+  }
+}
+
+function createFreeTimeAction(config: GameConfig, state: GameState): DailyAction {
+  const currentTimeSlot = state.timeSlotIndex >= config.timeSlots.length ? null : config.timeSlots[state.timeSlotIndex] || null
+  const slotLabel = currentTimeSlot?.label || '这个时间'
+
+  return {
+    id: `idle-${state.day}-${state.timeSlotIndex}`,
+    name: '什么都不做',
+    description: '你没有安排任何行动，她会自己度过这段时间。',
+    cost: 1,
+    flavor: `${slotLabel}里，你没有特别安排，她安静地按自己的想法度过了这段时间。`,
+    sceneId: state.currentSceneId,
+    availableTimeSlotIds: currentTimeSlot ? [currentTimeSlot.id] : undefined,
+    effects: [],
+    narrative: {
+      lines: [`${slotLabel}里，你没有特别安排，她安静地按自己的想法度过了这段时间。`],
+      choices: [],
+    },
   }
 }
 
@@ -167,10 +189,28 @@ export function useGameRuntime(config: GameConfig) {
     }))
   }
 
-  const finishDialogue = (pending: DialoguePacket[]) => {
+  const finishDialogue = (pending: DialoguePacket[], latestGame: GameState = game) => {
     if (pending.length > 0) {
       const [nextPacket, ...rest] = pending
       jumpToPacket(nextPacket, rest)
+      return
+    }
+
+    const shouldAdvanceDay = latestGame.timeSlotIndex >= maxEnergy
+    if (shouldAdvanceDay) {
+      const drafted = {
+        ...latestGame,
+        day: latestGame.day + 1,
+        energy: maxEnergy,
+        timeSlotIndex: 0,
+        currentMessage: `第 ${latestGame.day} 天结束。新的一天开始了。`,
+        dailyTriggeredEventIds: [],
+        log: [...latestGame.log, `第 ${latestGame.day} 天结束。`],
+      }
+      const resolved = resolveTriggeredEvents(drafted, config)
+      setDialogue(null)
+      setGame(resolved.state)
+      openPackets(resolved.triggeredEvents.map(packetFromEvent))
       return
     }
 
@@ -287,6 +327,38 @@ export function useGameRuntime(config: GameConfig) {
     }
   }
 
+  const requestAiFreeTimeLine = async (state: GameState) => {
+    const preview = buildFreeTimeStoryPreview({
+      config,
+      state,
+    })
+    setLastAiRequestPreview(preview)
+    const { controller, requestId, timeoutId, wasTimedOut } = startAiRequest()
+
+    try {
+      const line = await generateFreeTimeStory({
+        config,
+        state,
+        signal: controller.signal,
+      })
+
+      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return null
+      return line
+    } catch (error) {
+      if (controller.signal.aborted && !wasTimedOut()) return null
+      if (aiRequestIdRef.current !== requestId) return null
+      const message = wasTimedOut() ? 'AI free-time narration timed out. Switched back to fallback flow.' : error instanceof Error ? error.message : 'AI free-time narration failed.'
+      setAiError(message)
+      setGame((prev) => ({
+        ...prev,
+        log: [...prev.log, `AI fallback: ${message}`],
+      }))
+      return null
+    } finally {
+      finishAiRequest(requestId, timeoutId)
+    }
+  }
+
   const finalizeAiDialogue = async (session: AiDialogueSession, pending: DialoguePacket[]) => {
     setGame((prev) => ({ ...prev, currentMessage: 'AI is evaluating the interaction...' }))
     const evaluation = await requestAiEvaluation(session)
@@ -314,7 +386,7 @@ export function useGameRuntime(config: GameConfig) {
       return
     }
 
-    finishDialogue(pending)
+    finishDialogue(pending, resolved.state)
   }
 
   const handleDialogueNext = async () => {
@@ -501,21 +573,57 @@ export function useGameRuntime(config: GameConfig) {
     openPackets([packetFromAction(action, [turn.line], session, suggestions)])
   }
 
-  const handleEndDay = () => {
-    if (inPrologue || isDialogueOpen || isGeneratingNarrative) return
+  const handleDoNothing = async () => {
+    if (inPrologue || isDialogueOpen || isGeneratingNarrative || game.timeSlotIndex >= maxEnergy) return
 
-    const drafted = {
+    const idleAction = createFreeTimeAction(config, game)
+    const nextTimeSlotIndex = Math.min(maxEnergy, game.timeSlotIndex + 1)
+    const baseDraft = {
       ...game,
-      day: game.day + 1,
-      energy: config.maxEnergy,
-      currentMessage: `第 ${game.day} 天结束。新的一天开始了。`,
-      dailyTriggeredEventIds: [],
-      log: [...game.log, `第 ${game.day} 天结束。`],
+      energy: Math.max(0, maxEnergy - nextTimeSlotIndex),
+      timeSlotIndex: nextTimeSlotIndex,
+      currentMessage: idleAction.flavor,
+      currentSceneId: idleAction.sceneId || game.currentSceneId,
+      log: [...game.log, `Day ${game.day}: ${idleAction.name}. ${idleAction.flavor}`],
     }
 
-    const resolved = resolveTriggeredEvents(drafted, config)
-    setGame(resolved.state)
-    openPackets(resolved.triggeredEvents.map(packetFromEvent))
+    const resolved = resolveTriggeredEvents(baseDraft, config)
+    const fallbackPackets = [packetFromAction(idleAction), ...resolved.triggeredEvents.map(packetFromEvent)]
+
+    if (!canUseAiStory(config)) {
+      setAiError(null)
+      setGame(resolved.state)
+      openPackets(fallbackPackets)
+      return
+    }
+
+    setGame({
+      ...baseDraft,
+      currentMessage: 'AI is drafting the next line...',
+    })
+
+    const line = await requestAiFreeTimeLine(baseDraft)
+    if (!line) {
+      setGame(resolved.state)
+      openPackets(fallbackPackets)
+      return
+    }
+
+    setGame({
+      ...resolved.state,
+      currentMessage: line,
+      log: [...resolved.state.log, `AI free time: ${idleAction.name}`],
+    })
+
+    openPackets([
+      {
+        source: `空档: ${config.timeSlots[game.timeSlotIndex]?.label || '当前时段'}`,
+        sceneId: idleAction.sceneId,
+        lines: [line],
+        choices: [],
+      },
+      ...resolved.triggeredEvents.map(packetFromEvent),
+    ])
   }
 
   const handleRestart = () => {
@@ -551,7 +659,7 @@ export function useGameRuntime(config: GameConfig) {
     handleDialogueChoice,
     handleDialogueNext,
     handleDoAction,
-    handleEndDay,
+    handleDoNothing,
     handleRestart,
   }
 }

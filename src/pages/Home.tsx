@@ -50,7 +50,7 @@ export default function Home() {
     handleDialogueChoice,
     handleDialogueNext,
     handleDoAction,
-    handleEndDay,
+    handleDoNothing,
     handleRestart,
   } = useGameRuntime(config)
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
@@ -299,7 +299,7 @@ export default function Home() {
         </div>
         {!inPrologue && (
           <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            {currentTimeSlot ? `${currentTimeSlot.label} | ${remainingTimeSlots}/${maxEnergy}` : `\u5df2\u7528\u5b8c ${maxEnergy}/${maxEnergy}`}
+            {currentTimeSlot ? currentTimeSlot.label : '今日结束'}
           </div>
         )}
       </div>
@@ -333,15 +333,15 @@ export default function Home() {
 
           {visibleActions.length === 0 && currentTimeSlot ? (
             <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-3 text-xs text-slate-400 sm:col-span-2">
-              {'\u8fd9\u4e2a\u65f6\u6bb5\u6ca1\u6709\u53ef\u6267\u884c\u7684\u9884\u8bbe\u884c\u52a8\uff0c\u53ef\u4ee5\u76f4\u63a5\u7ed3\u675f\u4eca\u5929\u3002'}
+              {'\u8fd9\u4e2a\u65f6\u6bb5\u6ca1\u6709\u53ef\u6267\u884c\u7684\u9884\u8bbe\u884c\u52a8\uff0c\u53ef\u4ee5\u8ba9\u5979\u81ea\u5df1\u5ea6\u8fc7\u8fd9\u6bb5\u65f6\u95f4\u3002'}
             </div>
           ) : null}
           <button
             className="rounded-xl border border-amber-400/20 bg-[linear-gradient(180deg,#f59e0b,#d97706)] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(217,119,6,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:opacity-40 sm:col-span-2"
-            disabled={isDialogueOpen || isGeneratingNarrative}
-            onClick={handleEndDay}
+            disabled={isDialogueOpen || isGeneratingNarrative || !currentTimeSlot}
+            onClick={handleDoNothing}
           >
-            结束今天
+            什么都不做
           </button>
         </div>
       )}

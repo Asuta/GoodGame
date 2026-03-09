@@ -9,7 +9,7 @@ export function nextId(prefix: string) {
 }
 
 export function getMaxEnergyForConfig(config: GameConfig) {
-  return Math.max(1, config.timeSlots.length || config.maxEnergy)
+  return Math.max(1, config.timeSlots.length)
 }
 
 export function buildInitialStats(config: GameConfig): Record<string, number> {

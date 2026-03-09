@@ -1,4 +1,5 @@
-﻿import type { DailyAction, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
+﻿import { getMaxEnergyForConfig } from './gameCore/engine'
+import type { DailyAction, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
 
 type GenerateActionStoryParams = {
   action: DailyAction
@@ -16,6 +17,12 @@ type EvaluateActionInteractionParams = {
   state: GameState
   generatedLines: string[]
   playerIntents: string[]
+  signal?: AbortSignal
+}
+
+type GenerateFreeTimeStoryParams = {
+  config: GameConfig
+  state: GameState
   signal?: AbortSignal
 }
 
@@ -43,6 +50,11 @@ type StoryTurnPayload = {
   choices?: string[]
 }
 
+type SingleLinePayload = {
+  line?: string
+  lines?: string[]
+}
+
 type InteractionEffectPayload = {
   statId?: string
   id?: string
@@ -67,7 +79,7 @@ export type AiInteractionEvaluation = {
 }
 
 export type AiRequestPreview = {
-  kind: 'story-turn' | 'interaction-evaluation'
+  kind: 'story-turn' | 'interaction-evaluation' | 'free-time'
   endpoint: string
   systemPrompt: string
   userPrompt: string
@@ -174,7 +186,7 @@ function buildBaseContext(action: DailyAction, config: GameConfig, state: GameSt
     gameTitle: config.title,
     subtitle: config.subtitle,
     day: state.day,
-    energy: `${state.energy}/${config.maxEnergy}`,
+    energy: `${state.energy}/${getMaxEnergyForConfig(config)}`,
     currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
     timeSlots: config.timeSlots,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
@@ -276,6 +288,51 @@ function buildEvaluationUserPrompt(params: EvaluateActionInteractionParams) {
   ].join('\n\n')
 }
 
+function buildFreeTimeSystemPrompt(config: GameConfig) {
+  return [
+    'You are the scenario writer for a daily raising visual novel.',
+    'The player did not arrange anything for this time slot, so the girl spends it on her own.',
+    'Write exactly one short story line in Simplified Chinese.',
+    'Return JSON only, using the exact shape {"line":"..."}.',
+    'line must be 1 to 2 sentences, grounded, natural, and suitable for one-step reveal in the dialogue box.',
+    'Describe what she chooses to do, think about, or quietly handle by herself during this time slot.',
+    'Do not include choices, Markdown, or any explanation.',
+    config.ai.promptNotes.trim(),
+  ].join('\n')
+}
+
+function buildFreeTimeContext(params: GenerateFreeTimeStoryParams) {
+  const { config, state } = params
+  const currentScene = config.scenes.find((scene) => scene.id === state.currentSceneId)
+  const currentTimeSlot = state.timeSlotIndex >= config.timeSlots.length ? null : config.timeSlots[state.timeSlotIndex] || null
+
+  return {
+    gameTitle: config.title,
+    subtitle: config.subtitle,
+    day: state.day,
+    energy: `${state.energy}/${getMaxEnergyForConfig(config)}`,
+    currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
+    currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
+    heroine: {
+      name: config.ai.characterName,
+      profile: config.ai.characterProfile,
+    },
+    worldSetting: config.ai.worldSetting,
+    stats: buildStatsContext(config, state),
+    recentStory: state.log.slice(-config.ai.recentLogLimit),
+    instruction: 'The player made no arrangement for this time slot. Describe what the girl chooses to do on her own.',
+  }
+}
+
+function buildFreeTimeUserPrompt(params: GenerateFreeTimeStoryParams) {
+  return [
+    'Use the JSON context below to describe this unattended time slot.',
+    'Focus on the girl\'s own initiative. The player is present in the story world but does not direct her.',
+    'Keep the beat concise and specific to this moment of the day.',
+    JSON.stringify(buildFreeTimeContext(params), null, 2),
+  ].join('\n\n')
+}
+
 function parseChoicesFromPlainText(rawText: string) {
   const lines = rawText
     .replace(/\r/g, '')
@@ -338,6 +395,22 @@ function parseStoryTurn(rawText: string): AiStoryTurn {
     line,
     choices: plainTextChoices.length === 2 ? plainTextChoices : fallbackChoices,
   }
+}
+
+function parseSingleLineNarration(rawText: string) {
+  for (const candidate of extractJsonCandidates(rawText)) {
+    try {
+      const parsed = JSON.parse(candidate) as SingleLinePayload
+      const line = sanitizeText(parsed.line || parsed.lines?.[0] || '')
+      if (line) return line
+    } catch {
+      continue
+    }
+  }
+
+  const line = extractStoryLineFromPlainText(rawText)
+  if (!line) throw new Error('AI returned no usable free-time narration.')
+  return line
 }
 
 function sanitizeEffects(config: GameConfig, effects: InteractionEffectPayload[] | undefined) {
@@ -498,6 +571,19 @@ export function buildInteractionEvaluationPreview(params: EvaluateActionInteract
   }
 }
 
+export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): AiRequestPreview {
+  const systemPrompt = buildFreeTimeSystemPrompt(params.config)
+  const userPrompt = buildFreeTimeUserPrompt(params)
+  return {
+    kind: 'free-time',
+    endpoint: buildEndpoint(params.config),
+    systemPrompt,
+    userPrompt,
+    context: buildFreeTimeContext(params),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 140),
+  }
+}
+
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
   const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal)
@@ -508,4 +594,10 @@ export async function evaluateActionInteraction(params: EvaluateActionInteractio
   const preview = buildInteractionEvaluationPreview(params)
   const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal)
   return parseInteractionEvaluation(rawText, params.config)
+}
+
+export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams) {
+  const preview = buildFreeTimeStoryPreview(params)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal)
+  return parseSingleLineNarration(rawText)
 }
