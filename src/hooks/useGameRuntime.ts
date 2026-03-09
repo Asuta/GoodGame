@@ -29,7 +29,6 @@ type AiDialogueSession = {
   state: GameState
   generatedLines: string[]
   playerIntents: string[]
-  maxLines: number
 }
 
 type DialoguePacket = {
@@ -135,25 +134,6 @@ export function useGameRuntime(config: GameConfig) {
     const session = dialogue?.packet.aiSession
     if (!session) return null
 
-    const atDialogueEnd = dialogue.lineIndex >= dialogue.packet.lines.length - 1
-    const shouldEvaluate =
-      session.generatedLines.length >= session.maxLines ||
-      (atDialogueEnd && !canShowChoices && !canShowAiSuggestions)
-
-    if (shouldEvaluate) {
-      return buildInteractionEvaluationPreview({
-        action: session.action,
-        config,
-        state: {
-          ...session.state,
-          log: game.log,
-          currentMessage: game.currentMessage,
-        },
-        generatedLines: session.generatedLines,
-        playerIntents: session.playerIntents,
-      })
-    }
-
     return buildActionStoryTurnPreview({
       action: session.action,
       config,
@@ -162,7 +142,7 @@ export function useGameRuntime(config: GameConfig) {
       previousLines: session.generatedLines,
       playerIntent: '__WAITING_FOR_PLAYER_INTENT__',
     })
-  }, [canShowAiSuggestions, canShowChoices, config, dialogue, game.currentMessage, game.log])
+  }, [config, dialogue])
 
   const openPackets = (packets: DialoguePacket[]) => {
     if (!packets.length) return
@@ -411,7 +391,6 @@ export function useGameRuntime(config: GameConfig) {
     if (dialogue.packet.choices.length > 0 || (dialogue.packet.aiSuggestions?.length || 0) > 0) return
 
     if (dialogue.packet.aiSession) {
-      await finalizeAiDialogue(dialogue.packet.aiSession, dialogue.pending)
       return
     }
 
@@ -438,10 +417,6 @@ export function useGameRuntime(config: GameConfig) {
     if (!dialogue || !dialogue.packet.aiSession || isGeneratingNarrative) return
 
     const session = dialogue.packet.aiSession
-    if (session.generatedLines.length >= session.maxLines) {
-      await finalizeAiDialogue(session, dialogue.pending)
-      return
-    }
 
     setGame((prev) => ({
       ...prev,
@@ -461,8 +436,7 @@ export function useGameRuntime(config: GameConfig) {
       playerIntents: [...session.playerIntents, intent],
     }
 
-    const nextSuggestions = nextSession.generatedLines.length >= nextSession.maxLines ? [] : turn.choices
-    jumpToPacket(packetFromAction(session.action, [turn.line], nextSession, nextSuggestions), dialogue.pending)
+    jumpToPacket(packetFromAction(session.action, [turn.line], nextSession, turn.choices), dialogue.pending)
   }
 
   const handleEndAiDialogue = async () => {
@@ -562,7 +536,6 @@ export function useGameRuntime(config: GameConfig) {
       state: baseDraft,
       generatedLines: [],
       playerIntents: [],
-      maxLines: Math.max(1, config.ai.maxLines),
     }
 
     const turn = await requestAiTurn(baseSession)
@@ -583,8 +556,7 @@ export function useGameRuntime(config: GameConfig) {
       generatedLines: [turn.line],
     }
 
-    const suggestions = session.generatedLines.length >= session.maxLines ? [] : turn.choices
-    openPackets([packetFromAction(action, [turn.line], session, suggestions)])
+    openPackets([packetFromAction(action, [turn.line], session, turn.choices)])
   }
 
   const handleDoNothing = async () => {
@@ -634,7 +606,6 @@ export function useGameRuntime(config: GameConfig) {
       state: baseDraft,
       generatedLines: [line],
       playerIntents: [],
-      maxLines: Math.max(1, config.ai.maxLines),
     }
 
     openPackets([

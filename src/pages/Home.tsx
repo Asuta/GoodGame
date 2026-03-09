@@ -60,16 +60,7 @@ export default function Home() {
   const customIntentFormKey = dialogue ? `${dialogue.packet.source}-${dialogue.packet.lines[0] || ''}` : 'idle'
   const isDialogueAtEnd = Boolean(dialogue && dialogue.lineIndex >= dialogue.packet.lines.length - 1)
   const canShowAiCustomInput = Boolean(dialogue && dialogue.packet.aiSession && isDialogueAtEnd && !canShowChoices && !isTyping)
-  const isFreeTimeAiDialogue = Boolean(dialogue?.packet.source.startsWith('空档:'))
-  const isAiDialogueEnding = Boolean(
-    dialogue &&
-      dialogue.packet.aiSession &&
-      dialogue.lineIndex >= dialogue.packet.lines.length - 1 &&
-      dialogue.packet.aiSession.generatedLines.length >= dialogue.packet.aiSession.maxLines &&
-      !canShowChoices &&
-      !canShowAiSuggestions,
-  )
-  const dialogueButtonLabel = isGeneratingNarrative ? '\u751f\u6210\u4e2d...' : isAiDialogueEnding ? '\u7ed3\u675f\u5bf9\u8bdd' : isTyping ? '\u663e\u793a\u5168\u6587' : '\u4e0b\u4e00\u6b65'
+  const dialogueButtonLabel = isGeneratingNarrative ? '\u751f\u6210\u4e2d...' : isTyping ? '\u663e\u793a\u5168\u6587' : '\u4e0b\u4e00\u6b65'
   const visibleActions = useMemo(() => {
     if (!currentTimeSlot) return []
     return config.dailyActions.filter((action) => {
@@ -227,20 +218,8 @@ export default function Home() {
         </label>
 
         <label className="flex flex-col gap-1 text-sm text-slate-700">
-          <span className="font-medium">Max AI turns</span>
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2"
-            type="number"
-            min={1}
-            max={8}
-            value={config.ai.maxLines}
-            onChange={(e) =>
-              setConfig((prev) => ({
-                ...prev,
-                ai: { ...prev.ai, maxLines: Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 1))) },
-              }))
-            }
-          />
+          <span className="font-medium">AI 回合上限（已停用）</span>
+          <input className="rounded-xl border border-slate-300 px-3 py-2" type="number" min={1} max={8} disabled value={config.ai.maxLines} />
         </label>
 
         <label className="md:col-span-2 flex flex-col gap-1 text-sm text-slate-700">
@@ -285,7 +264,7 @@ export default function Home() {
     }
 
     if (dialogue) {
-      if (!canShowChoices) handleDialogueNext()
+      if (!canShowChoices && !canShowAiSuggestions && !canShowAiCustomInput) handleDialogueNext()
       return
     }
 
@@ -533,26 +512,13 @@ export default function Home() {
                           className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
                           defaultValue=""
                           name="customIntent"
-                          placeholder={isFreeTimeAiDialogue ? '输入你想临时插手做的事...' : '输入你想做的事...'}
+                          placeholder="输入你想做的事..."
                           type="text"
                         />
                         <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white" type="submit">
                           {'\u53d1\u9001'}
                         </button>
                       </form>
-                    ) : null}
-                    {isFreeTimeAiDialogue ? (
-                      <button
-                        className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={isGeneratingNarrative}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDialogueNext()
-                        }}
-                        type="button"
-                      >
-                        {dialogueButtonLabel}
-                      </button>
                     ) : null}
                     <button
                       className="rounded-lg border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"

@@ -17,3 +17,6 @@ Original prompt: ????????????????????????????????????????????????????????????
 - 2026-03-09: Added a one-off migration in `storage.ts` that automatically rewrites the retired `right.codes` AI endpoint/key back to the working template defaults when loading saved browser config.
 - 2026-03-09: Added a `恢复默认 AI 配置` button on the play-page settings panel so the current browser config can be repaired without resetting the whole game template.
 - 2026-03-09: Moved the retired AI endpoint migration from general config normalization into `loadConfig()` only, which fixed the API Key field resetting while the user edits settings.
+- 2026-03-09: Removed the AI conversation `maxLines` cutoff in `useGameRuntime`, so custom input can continue indefinitely and only `直接结束` triggers evaluation.
+- 2026-03-09: Marked the old AI turn-limit fields in Home/AiTab as legacy-unused to match the new manual-end flow.
+- 2026-03-09: Verified with `npm run lint`, `npm run build`, the web-game Playwright client screenshot, and a mocked Playwright flow that reached 5 AI turns before manual end and then triggered exactly one evaluation request.

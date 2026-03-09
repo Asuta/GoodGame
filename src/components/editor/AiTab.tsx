@@ -98,19 +98,14 @@ export function AiTab({ config, setConfig }: EditorTabProps) {
           />
         </Field>
 
-        <Field label="Lines per scene">
+        <Field label="AI turns limit (legacy / unused)">
           <input
             type="number"
             min={1}
             max={8}
             className="rounded-lg border border-slate-300 px-3 py-2"
+            disabled
             value={config.ai.maxLines}
-            onChange={(e) =>
-              setConfig((prev) => ({
-                ...prev,
-                ai: { ...prev.ai, maxLines: Math.max(1, Math.min(8, Math.round(Number(e.target.value) || 1))) },
-              }))
-            }
           />
         </Field>
 
@@ -168,7 +163,7 @@ export function AiTab({ config, setConfig }: EditorTabProps) {
 
       <div className="rounded-xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 text-sm text-cyan-950">
         <p className="font-medium">The requested test endpoint is prefilled in the default config</p>
-        <p className="mt-1 text-cyan-900/80">You can also adjust GPT-5.4 reasoning effort here, including turning reasoning off entirely.</p>
+        <p className="mt-1 text-cyan-900/80">AI scenes now continue until the player manually ends the exchange, so the old turn-limit field is left here only for backward compatibility.</p>
       </div>
     </div>
   )
