@@ -261,6 +261,10 @@ export function useGameRuntime(config: GameConfig) {
         triggeredEvents: [],
         previousLines: session.generatedLines,
         playerIntent,
+        onLineUpdate: (line) => {
+          if (!line || controller.signal.aborted || aiRequestIdRef.current !== requestId) return
+          setGame((prev) => (prev.currentMessage === line ? prev : { ...prev, currentMessage: line }))
+        },
         signal: controller.signal,
       })
 
@@ -339,6 +343,10 @@ export function useGameRuntime(config: GameConfig) {
       const line = await generateFreeTimeStory({
         config,
         state,
+        onLineUpdate: (nextLine) => {
+          if (!nextLine || controller.signal.aborted || aiRequestIdRef.current !== requestId) return
+          setGame((prev) => (prev.currentMessage === nextLine ? prev : { ...prev, currentMessage: nextLine }))
+        },
         signal: controller.signal,
       })
 
@@ -455,6 +463,12 @@ export function useGameRuntime(config: GameConfig) {
 
     const nextSuggestions = nextSession.generatedLines.length >= nextSession.maxLines ? [] : turn.choices
     jumpToPacket(packetFromAction(session.action, [turn.line], nextSession, nextSuggestions), dialogue.pending)
+  }
+
+  const handleEndAiDialogue = async () => {
+    if (!dialogue || !dialogue.packet.aiSession || isGeneratingNarrative) return
+    if (dialogue.lineIndex < dialogue.packet.lines.length - 1) return
+    await finalizeAiDialogue(dialogue.packet.aiSession, dialogue.pending)
   }
 
   const handleDialogueChoice = (choice: NarrativeChoice) => {
@@ -615,12 +629,22 @@ export function useGameRuntime(config: GameConfig) {
       log: [...resolved.state.log, `AI free time: ${idleAction.name}`],
     })
 
+    const session: AiDialogueSession = {
+      action: idleAction,
+      state: baseDraft,
+      generatedLines: [line],
+      playerIntents: [],
+      maxLines: Math.max(1, config.ai.maxLines),
+    }
+
     openPackets([
       {
         source: `空档: ${config.timeSlots[game.timeSlotIndex]?.label || '当前时段'}`,
         sceneId: idleAction.sceneId,
         lines: [line],
         choices: [],
+        aiSession: session,
+        aiSuggestions: [],
       },
       ...resolved.triggeredEvents.map(packetFromEvent),
     ])
@@ -655,6 +679,7 @@ export function useGameRuntime(config: GameConfig) {
     maxEnergy,
     handleAdvancePrologue,
     handleAiIntent,
+    handleEndAiDialogue,
     cancelAiNarrative,
     handleDialogueChoice,
     handleDialogueNext,

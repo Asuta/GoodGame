@@ -47,6 +47,7 @@ export default function Home() {
     maxEnergy,
     handleAdvancePrologue,
     handleAiIntent,
+    handleEndAiDialogue,
     handleDialogueChoice,
     handleDialogueNext,
     handleDoAction,
@@ -57,6 +58,9 @@ export default function Home() {
   const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '', typingDelay)
   const aiModeEnabled = config.ai.enabled
   const customIntentFormKey = dialogue ? `${dialogue.packet.source}-${dialogue.packet.lines[0] || ''}` : 'idle'
+  const isDialogueAtEnd = Boolean(dialogue && dialogue.lineIndex >= dialogue.packet.lines.length - 1)
+  const canShowAiCustomInput = Boolean(dialogue && dialogue.packet.aiSession && isDialogueAtEnd && !canShowChoices && !isTyping)
+  const isFreeTimeAiDialogue = Boolean(dialogue?.packet.source.startsWith('空档:'))
   const isAiDialogueEnding = Boolean(
     dialogue &&
       dialogue.packet.aiSession &&
@@ -258,7 +262,7 @@ export default function Home() {
     if (!autoPlayEnabled || isTyping) return
 
     if (dialogue) {
-      if (canShowChoices || canShowAiSuggestions) return
+      if (canShowChoices || canShowAiSuggestions || canShowAiCustomInput) return
       const timer = window.setTimeout(() => {
         handleDialogueNext()
       }, AUTO_PLAY_DELAY)
@@ -272,7 +276,7 @@ export default function Home() {
     }, AUTO_PLAY_DELAY)
 
     return () => window.clearTimeout(timer)
-  }, [autoPlayEnabled, canShowAiSuggestions, canShowChoices, dialogue, handleAdvancePrologue, handleDialogueNext, inPrologue, isTyping])
+  }, [autoPlayEnabled, canShowAiCustomInput, canShowAiSuggestions, canShowChoices, dialogue, handleAdvancePrologue, handleDialogueNext, inPrologue, isTyping])
 
   const handleDialoguePanelClick = () => {
     if (isTyping) {
@@ -496,7 +500,7 @@ export default function Home() {
                       {choice.label}
                     </button>
                   ))
-                ) : canShowAiSuggestions && !isTyping ? (
+                ) : (canShowAiSuggestions || canShowAiCustomInput) && !isTyping ? (
                   <>
                     {(dialogue.packet.aiSuggestions || []).map((choice) => (
                       <button
@@ -511,30 +515,56 @@ export default function Home() {
                         {choice}
                       </button>
                     ))}
-                    <form
-                      key={customIntentFormKey}
-                      className="flex min-w-[260px] flex-1 gap-2"
-                      onClick={(event) => event.stopPropagation()}
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        const formData = new FormData(event.currentTarget)
-                        const value = String(formData.get('customIntent') || '').trim()
-                        if (!value) return
-                        void handleAiIntent(value)
-                        event.currentTarget.reset()
-                      }}
-                    >
-                      <input
-                        className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
-                        defaultValue=""
-                        name="customIntent"
-                        placeholder={'\u8f93\u5165\u4f60\u60f3\u505a\u7684\u4e8b...'}
-                        type="text"
-                      />
-                      <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white" type="submit">
-                        {'\u53d1\u9001'}
+                    {canShowAiCustomInput ? (
+                      <form
+                        key={customIntentFormKey}
+                        className="flex min-w-[260px] flex-1 gap-2"
+                        onClick={(event) => event.stopPropagation()}
+                        onSubmit={(event) => {
+                          event.preventDefault()
+                          const formData = new FormData(event.currentTarget)
+                          const value = String(formData.get('customIntent') || '').trim()
+                          if (!value) return
+                          void handleAiIntent(value)
+                          event.currentTarget.reset()
+                        }}
+                      >
+                        <input
+                          className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
+                          defaultValue=""
+                          name="customIntent"
+                          placeholder={isFreeTimeAiDialogue ? '输入你想临时插手做的事...' : '输入你想做的事...'}
+                          type="text"
+                        />
+                        <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white" type="submit">
+                          {'\u53d1\u9001'}
+                        </button>
+                      </form>
+                    ) : null}
+                    {isFreeTimeAiDialogue ? (
+                      <button
+                        className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={isGeneratingNarrative}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDialogueNext()
+                        }}
+                        type="button"
+                      >
+                        {dialogueButtonLabel}
                       </button>
-                    </form>
+                    ) : null}
+                    <button
+                      className="rounded-lg border border-slate-600 bg-slate-900/80 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={isGeneratingNarrative}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void handleEndAiDialogue()
+                      }}
+                      type="button"
+                    >
+                      直接结束
+                    </button>
                   </>
                 ) : (
                   <button

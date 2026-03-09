@@ -7,6 +7,21 @@ type TypingState = {
   visibleCount: number
 }
 
+function syncTypingState(current: TypingState, nextText: string) {
+  if (current.text === nextText) return current
+  if (nextText.startsWith(current.text)) {
+    return {
+      text: nextText,
+      visibleCount: Math.min(current.visibleCount, Array.from(nextText).length),
+    }
+  }
+
+  return {
+    text: nextText,
+    visibleCount: 0,
+  }
+}
+
 export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DELAY) {
   const characters = useMemo(() => Array.from(text), [text])
   const [typingState, setTypingState] = useState<TypingState>(() => ({
@@ -38,7 +53,7 @@ export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DEL
 
     timerRef.current = window.setInterval(() => {
       setTypingState((current) => {
-        const synced = current.text === text ? current : { text, visibleCount: 0 }
+        const synced = syncTypingState(current, text)
 
         if (synced.visibleCount >= characters.length) {
           if (timerRef.current !== null) {
@@ -60,7 +75,11 @@ export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DEL
     }
   }, [characters.length, prefersReducedMotion, text, typingDelay])
 
-  const visibleCount = prefersReducedMotion ? characters.length : typingState.text === text ? Math.min(typingState.visibleCount, characters.length) : 0
+  const visibleCount = prefersReducedMotion
+    ? characters.length
+    : syncTypingState(typingState, text).text === text
+      ? Math.min(syncTypingState(typingState, text).visibleCount, characters.length)
+      : 0
 
   const finishTyping = () => {
     if (timerRef.current !== null) {

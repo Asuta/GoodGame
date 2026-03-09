@@ -1,21 +1,40 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, type Dispatch, type SetStateAction } from 'react'
 
 import { AiTab } from '@/components/editor/AiTab'
 import { BaseTab } from '@/components/editor/BaseTab'
 import { DataTab } from '@/components/editor/DataTab'
 import { linesToText, textToLines } from '@/components/editor/helpers'
 import { MediaTab } from '@/components/editor/MediaTab'
-import { Field } from '@/components/editor/shared'
+import { CollapsiblePanel, EditorBadge, Field } from '@/components/editor/shared'
 import { StatsTab } from '@/components/editor/StatsTab'
 import { useGameConfig } from '@/hooks/useGameConfig'
 import { DEFAULT_CONFIG, nextId, type Operator } from '@/lib/gameCore'
+
+function isSectionOpen(state: Record<string, boolean>, key: string, defaultOpen = false) {
+  return state[key] ?? defaultOpen
+}
+
+function toggleSectionState(
+  setter: Dispatch<SetStateAction<Record<string, boolean>>>,
+  key: string,
+  defaultOpen = false,
+) {
+  setter((prev) => ({
+    ...prev,
+    [key]: !(prev[key] ?? defaultOpen),
+  }))
+}
 
 export default function Editor() {
   const { config, setConfig, resetConfig } = useGameConfig()
   const [tab, setTab] = useState<'base' | 'ai' | 'media' | 'stats' | 'actions' | 'events' | 'data'>('base')
   const [importText, setImportText] = useState('')
   const [importError, setImportError] = useState('')
+  const [openActions, setOpenActions] = useState<Record<string, boolean>>({})
+  const [openActionChoices, setOpenActionChoices] = useState<Record<string, boolean>>({})
+  const [openEvents, setOpenEvents] = useState<Record<string, boolean>>({})
+  const [openEventChoices, setOpenEventChoices] = useState<Record<string, boolean>>({})
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-[1400px] px-3 py-4 md:px-6 md:py-6">
@@ -76,8 +95,24 @@ export default function Editor() {
 
         {tab === 'actions' && (
           <div className="space-y-3">
-            {config.dailyActions.map((action) => (
-              <div key={action.id} className="space-y-2 rounded-xl border border-slate-200 p-3">
+            {config.dailyActions.map((action, actionIndex) => {
+              const actionOpen = isSectionOpen(openActions, action.id, actionIndex === 0)
+              return (
+                <CollapsiblePanel
+                  key={action.id}
+                  title={action.name || `未命名选项 ${actionIndex + 1}`}
+                  subtitle={action.description || '展开后编辑文本、时间段、分支和数值效果。'}
+                  meta={
+                    <>
+                      <EditorBadge>{`${action.cost} 次`}</EditorBadge>
+                      <EditorBadge>{`${(action.narrative?.choices || []).length} 分支`}</EditorBadge>
+                      <EditorBadge>{`${action.effects.length} 影响`}</EditorBadge>
+                    </>
+                  }
+                  open={actionOpen}
+                  onToggle={() => toggleSectionState(setOpenActions, action.id, actionIndex === 0)}
+                >
+                  <div className="space-y-3">
                 <Field label="选项名">
                   <input
                     className="rounded-lg border border-slate-300 px-3 py-2"
@@ -169,7 +204,7 @@ export default function Editor() {
                   </Field>
                 </div>
                 <Field label="Time slots">
-                  <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 p-3">
+                  <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
                     {config.timeSlots.map((slot) => {
                       const checked = action.availableTimeSlotIds?.includes(slot.id) ?? false
                       return (
@@ -210,9 +245,22 @@ export default function Editor() {
                 </Field>
 
 
-                <p className="text-xs font-semibold text-slate-500">对话分支选项</p>
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">对话分支选项</p>
+                    <EditorBadge>{`${(action.narrative?.choices || []).length} 个分支`}</EditorBadge>
+                  </div>
                 {(action.narrative?.choices || []).map((choice, choiceIndex) => (
-                  <div key={`${action.id}-choice-${choice.id}`} className="space-y-2 rounded-lg border border-slate-200 p-2">
+                  <CollapsiblePanel
+                    key={`${action.id}-choice-${choice.id}`}
+                    title={choice.label || `分支 ${choiceIndex + 1}`}
+                    subtitle={`判定：${config.stats.find((stat) => stat.id === choice.statId)?.name || '未设置'} ${choice.operator} ${choice.value}`}
+                    meta={<EditorBadge>{choice.successLines.length + choice.failLines.length} 句回应</EditorBadge>}
+                    open={isSectionOpen(openActionChoices, `${action.id}:${choice.id}`, choiceIndex === 0)}
+                    onToggle={() => toggleSectionState(setOpenActionChoices, `${action.id}:${choice.id}`, choiceIndex === 0)}
+                    nested
+                  >
+                    <div className="space-y-3">
                     <Field label="选项文本">
                       <input
                         className="rounded-lg border border-slate-300 px-3 py-2"
@@ -400,7 +448,8 @@ export default function Editor() {
                     >
                       删除分支
                     </button>
-                  </div>
+                    </div>
+                  </CollapsiblePanel>
                 ))}
 
                 <button
@@ -437,7 +486,13 @@ export default function Editor() {
                 >
                   新增对话分支
                 </button>
+                </div>
 
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">数值影响</p>
+                    <EditorBadge>{`${action.effects.length} 条`}</EditorBadge>
+                  </div>
                 {action.effects.map((effect, index) => (
                   <div key={`${action.id}-${index}`} className="grid grid-cols-[1fr_auto_auto] gap-2">
                     <select
@@ -495,9 +550,9 @@ export default function Editor() {
                           ),
                         }))
                       }
-                    >
-                      删除
-                    </button>
+                  >
+                    删除
+                  </button>
                   </div>
                 ))}
 
@@ -522,8 +577,11 @@ export default function Editor() {
                     删除选项
                   </button>
                 </div>
-              </div>
-            ))}
+                </div>
+                  </div>
+                </CollapsiblePanel>
+              )
+            })}
 
             <button
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white"
@@ -557,8 +615,24 @@ export default function Editor() {
 
         {tab === 'events' && (
           <div className="space-y-3">
-            {config.events.map((event) => (
-              <div key={event.id} className="space-y-2 rounded-xl border border-slate-200 p-3">
+            {config.events.map((event, eventIndex) => {
+              const eventOpen = isSectionOpen(openEvents, event.id, eventIndex === 0)
+              return (
+                <CollapsiblePanel
+                  key={event.id}
+                  title={event.title || `未命名事件 ${eventIndex + 1}`}
+                  subtitle={event.description || '展开后编辑触发条件、剧情文本和事件效果。'}
+                  meta={
+                    <>
+                      <EditorBadge>{event.repeatable ? '可重复' : '单次'}</EditorBadge>
+                      <EditorBadge>{`${event.conditions.length} 条件`}</EditorBadge>
+                      <EditorBadge>{`${event.effects.length} 效果`}</EditorBadge>
+                    </>
+                  }
+                  open={eventOpen}
+                  onToggle={() => toggleSectionState(setOpenEvents, event.id, eventIndex === 0)}
+                >
+                  <div className="space-y-3">
                 <Field label="事件标题">
                   <input
                     className="rounded-lg border border-slate-300 px-3 py-2"
@@ -628,9 +702,22 @@ export default function Editor() {
                   />
                 </Field>
 
-                <p className="text-xs font-semibold text-slate-500">事件对话分支</p>
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">事件对话分支</p>
+                    <EditorBadge>{`${(event.narrative?.choices || []).length} 个分支`}</EditorBadge>
+                  </div>
                 {(event.narrative?.choices || []).map((choice, choiceIndex) => (
-                  <div key={`${event.id}-narrative-choice-${choice.id}`} className="space-y-2 rounded-lg border border-slate-200 p-2">
+                  <CollapsiblePanel
+                    key={`${event.id}-narrative-choice-${choice.id}`}
+                    title={choice.label || `事件分支 ${choiceIndex + 1}`}
+                    subtitle={`判定：${config.stats.find((stat) => stat.id === choice.statId)?.name || '未设置'} ${choice.operator} ${choice.value}`}
+                    meta={<EditorBadge>{choice.successLines.length + choice.failLines.length} 句回应</EditorBadge>}
+                    open={isSectionOpen(openEventChoices, `${event.id}:${choice.id}`, choiceIndex === 0)}
+                    onToggle={() => toggleSectionState(setOpenEventChoices, `${event.id}:${choice.id}`, choiceIndex === 0)}
+                    nested
+                  >
+                    <div className="space-y-3">
                     <Field label="选项文本">
                       <input
                         className="rounded-lg border border-slate-300 px-3 py-2"
@@ -818,7 +905,8 @@ export default function Editor() {
                     >
                       删除分支
                     </button>
-                  </div>
+                    </div>
+                  </CollapsiblePanel>
                 ))}
 
                 <button
@@ -855,8 +943,13 @@ export default function Editor() {
                 >
                   新增事件分支
                 </button>
+                </div>
 
-                <p className="text-xs font-semibold text-slate-500">触发条件</p>
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">触发条件</p>
+                    <EditorBadge>{`${event.conditions.length} 条`}</EditorBadge>
+                  </div>
                 {event.conditions.map((condition, index) => (
                   <div key={`${event.id}-cond-${index}`} className="grid grid-cols-[1fr_auto_auto_auto] gap-2">
                     <select
@@ -956,8 +1049,13 @@ export default function Editor() {
                 >
                   新增条件
                 </button>
+                </div>
 
-                <p className="text-xs font-semibold text-slate-500">触发效果</p>
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-[0.12em] text-slate-500">触发效果</p>
+                    <EditorBadge>{`${event.effects.length} 条`}</EditorBadge>
+                  </div>
                 {event.effects.map((effect, index) => (
                   <div key={`${event.id}-eff-${index}`} className="grid grid-cols-[1fr_auto_auto] gap-2">
                     <select
@@ -1037,8 +1135,11 @@ export default function Editor() {
                     删除事件
                   </button>
                 </div>
-              </div>
-            ))}
+                </div>
+                  </div>
+                </CollapsiblePanel>
+              )
+            })}
 
             <button
               className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white"

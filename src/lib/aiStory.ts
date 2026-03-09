@@ -8,6 +8,7 @@ type GenerateActionStoryParams = {
   triggeredEvents: StoryEvent[]
   previousLines?: string[]
   playerIntent?: string
+  onLineUpdate?: (value: string) => void
   signal?: AbortSignal
 }
 
@@ -23,6 +24,7 @@ type EvaluateActionInteractionParams = {
 type GenerateFreeTimeStoryParams = {
   config: GameConfig
   state: GameState
+  onLineUpdate?: (value: string) => void
   signal?: AbortSignal
 }
 
@@ -42,6 +44,18 @@ type ResponsesApiResponse = {
       type?: string
     }>
   }>
+}
+
+type ResponsesStreamEvent = {
+  delta?: string
+  item?: {
+    content?: Array<{
+      text?: string
+      type?: string
+    }>
+  }
+  output_text?: string
+  text?: string
 }
 
 type StoryTurnPayload = {
@@ -133,12 +147,29 @@ function extractChatContent(payload: ChatCompletionsResponse) {
   return ''
 }
 
+function extractChatStreamDelta(payload: unknown) {
+  const content = (payload as { choices?: Array<{ delta?: { content?: string | Array<{ text?: string; type?: string }> } }> })?.choices?.[0]?.delta?.content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) return content.map((part) => part.text || '').join('')
+  return ''
+}
+
 function extractResponsesContent(payload: ResponsesApiResponse) {
   if (typeof payload.output_text === 'string' && payload.output_text.trim()) return payload.output_text
   return (payload.output || [])
     .flatMap((item) => item.content || [])
     .map((part) => part.text || '')
     .join('\n')
+}
+
+function extractResponsesStreamDelta(payload: ResponsesStreamEvent, eventName: string, hasStreamedText: boolean) {
+  if (eventName.endsWith('.delta') && typeof payload.delta === 'string') return payload.delta
+  if (!hasStreamedText && eventName.endsWith('.done') && typeof payload.text === 'string') return payload.text
+  if (!hasStreamedText && typeof payload.output_text === 'string') return payload.output_text
+  if (!hasStreamedText && Array.isArray(payload.item?.content)) {
+    return payload.item.content.map((part) => part.text || '').join('')
+  }
+  return ''
 }
 
 function buildResponsesReasoning(config: GameConfig) {
@@ -397,6 +428,69 @@ function parseStoryTurn(rawText: string): AiStoryTurn {
   }
 }
 
+function extractProgressiveJsonStringField(rawText: string, fieldName: string) {
+  const key = `"${fieldName}"`
+  const keyIndex = rawText.indexOf(key)
+  if (keyIndex < 0) return ''
+
+  let index = keyIndex + key.length
+  while (index < rawText.length && rawText[index] !== ':') index += 1
+  if (index >= rawText.length) return ''
+
+  index += 1
+  while (index < rawText.length && /\s/.test(rawText[index])) index += 1
+  if (rawText[index] !== '"') return ''
+
+  index += 1
+  let value = ''
+
+  while (index < rawText.length) {
+    const char = rawText[index]
+    if (char === '"') break
+
+    if (char === '\\') {
+      const next = rawText[index + 1]
+      if (!next) break
+
+      if (next === 'u') {
+        const unicode = rawText.slice(index + 2, index + 6)
+        if (unicode.length < 4 || /[^0-9a-fA-F]/.test(unicode)) break
+        value += String.fromCharCode(Number.parseInt(unicode, 16))
+        index += 6
+        continue
+      }
+
+      const escapeMap: Record<string, string> = {
+        '"': '"',
+        '\\': '\\',
+        '/': '/',
+        b: '\b',
+        f: '\f',
+        n: '\n',
+        r: '\r',
+        t: '\t',
+      }
+      value += escapeMap[next] ?? next
+      index += 2
+      continue
+    }
+
+    value += char
+    index += 1
+  }
+
+  return value
+}
+
+function extractProgressiveLine(rawText: string) {
+  const jsonLine = extractProgressiveJsonStringField(rawText, 'line')
+  if (jsonLine) return jsonLine
+
+  const trimmed = rawText.trim()
+  if (!trimmed || trimmed.startsWith('{') || trimmed.startsWith('```')) return ''
+  return sanitizeText(trimmed)
+}
+
 function parseSingleLineNarration(rawText: string) {
   for (const candidate of extractJsonCandidates(rawText)) {
     try {
@@ -494,7 +588,7 @@ function buildEndpoint(config: GameConfig) {
   return config.ai.apiMode === 'responses' ? `${endpointBase}/responses` : `${endpointBase}/chat/completions`
 }
 
-function buildRequestPayload(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number) {
+function buildRequestPayload(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number, stream = false) {
   return config.ai.apiMode === 'responses'
     ? {
         model: config.ai.model,
@@ -512,6 +606,7 @@ function buildRequestPayload(config: GameConfig, systemPrompt: string, userPromp
         ],
         ...(buildResponsesReasoning(config) ? { reasoning: buildResponsesReasoning(config) } : {}),
         max_output_tokens: maxTokens,
+        stream,
       }
     : {
         model: config.ai.model,
@@ -522,10 +617,107 @@ function buildRequestPayload(config: GameConfig, systemPrompt: string, userPromp
         ...(buildChatReasoningEffort(config) ? { reasoning_effort: buildChatReasoningEffort(config) } : {}),
         ...(shouldSendTemperature(config) ? { temperature: config.ai.temperature } : {}),
         max_tokens: maxTokens,
+        stream,
       }
 }
 
-async function requestAiText(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number, signal?: AbortSignal) {
+function parseSseEvent(rawEvent: string) {
+  const lines = rawEvent.split('\n')
+  let eventName = ''
+  const dataLines: string[] = []
+
+  for (const line of lines) {
+    if (!line || line.startsWith(':')) continue
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim()
+      continue
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart())
+    }
+  }
+
+  const data = dataLines.join('\n').trim()
+  if (!data) return null
+  return { eventName, data }
+}
+
+async function readStreamedAiText(response: Response, config: GameConfig, onRawText: (value: string) => void) {
+  const reader = response.body?.getReader()
+  if (!reader) return ''
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let rawText = ''
+  let hasStreamedText = false
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done }).replace(/\r\n/g, '\n')
+
+    let delimiterIndex = buffer.indexOf('\n\n')
+    while (delimiterIndex >= 0) {
+      const rawEvent = buffer.slice(0, delimiterIndex)
+      buffer = buffer.slice(delimiterIndex + 2)
+      const parsedEvent = parseSseEvent(rawEvent)
+
+      if (parsedEvent) {
+        if (parsedEvent.data === '[DONE]') return rawText
+
+        try {
+          const payload = JSON.parse(parsedEvent.data) as ResponsesStreamEvent
+          const delta =
+            config.ai.apiMode === 'responses'
+              ? extractResponsesStreamDelta(payload, parsedEvent.eventName, hasStreamedText)
+              : extractChatStreamDelta(payload)
+
+          if (delta) {
+            rawText += delta
+            hasStreamedText = true
+            onRawText(rawText)
+          }
+        } catch {
+          continue
+        }
+      }
+
+      delimiterIndex = buffer.indexOf('\n\n')
+    }
+
+    if (done) break
+  }
+
+  if (buffer.trim()) {
+    const parsedEvent = parseSseEvent(buffer)
+    if (parsedEvent && parsedEvent.data !== '[DONE]') {
+      try {
+        const payload = JSON.parse(parsedEvent.data) as ResponsesStreamEvent
+        const delta =
+          config.ai.apiMode === 'responses'
+            ? extractResponsesStreamDelta(payload, parsedEvent.eventName, hasStreamedText)
+            : extractChatStreamDelta(payload)
+
+        if (delta) {
+          rawText += delta
+          onRawText(rawText)
+        }
+      } catch {
+        return rawText
+      }
+    }
+  }
+
+  return rawText
+}
+
+async function requestAiText(
+  config: GameConfig,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+  signal?: AbortSignal,
+  onRawText?: (value: string) => void,
+) {
   const endpoint = buildEndpoint(config)
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -533,7 +725,7 @@ async function requestAiText(config: GameConfig, systemPrompt: string, userPromp
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.ai.apiKey}`,
     },
-    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens)),
+    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, Boolean(onRawText))),
     signal,
   })
 
@@ -541,8 +733,17 @@ async function requestAiText(config: GameConfig, systemPrompt: string, userPromp
     throw new Error(await parseErrorMessage(response))
   }
 
-  const data = (await response.json()) as ResponsesApiResponse | ChatCompletionsResponse
-  return config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
+  const fallbackResponse = onRawText && response.body ? response.clone() : null
+  const contentType = response.headers.get('content-type') || ''
+  if (onRawText && response.body && contentType.includes('text/event-stream')) {
+    const streamedText = await readStreamedAiText(response, config, onRawText)
+    if (streamedText.trim()) return streamedText
+  }
+
+  const data = (await (fallbackResponse || response).json()) as ResponsesApiResponse | ChatCompletionsResponse
+  const finalText = config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
+  if (onRawText) onRawText(finalText)
+  return finalText
 }
 
 export function buildActionStoryTurnPreview(params: GenerateActionStoryParams): AiRequestPreview {
@@ -586,7 +787,14 @@ export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): 
 
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal)
+  let lastLine = ''
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal, (value) => {
+    const nextLine = extractProgressiveLine(value)
+    if (nextLine && nextLine !== lastLine) {
+      lastLine = nextLine
+      params.onLineUpdate?.(nextLine)
+    }
+  })
   return parseStoryTurn(rawText)
 }
 
@@ -598,6 +806,13 @@ export async function evaluateActionInteraction(params: EvaluateActionInteractio
 
 export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams) {
   const preview = buildFreeTimeStoryPreview(params)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal)
+  let lastLine = ''
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal, (value) => {
+    const nextLine = extractProgressiveLine(value)
+    if (nextLine && nextLine !== lastLine) {
+      lastLine = nextLine
+      params.onLineUpdate?.(nextLine)
+    }
+  })
   return parseSingleLineNarration(rawText)
 }
