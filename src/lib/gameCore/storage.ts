@@ -1,9 +1,8 @@
 import { DEFAULT_CONFIG } from './defaultConfig'
-import { normalizeNarrative } from './engine'
-import type { AiConfig, AiReasoningEffort, GameConfig } from './types'
+import { getMaxEnergyForConfig, normalizeNarrative } from './engine'
+import type { AiConfig, AiReasoningEffort, GameConfig, TimeSlotDef } from './types'
 
 export const CONFIG_STORAGE_KEY = 'daily-raising-editor-config-v2'
-
 
 const AI_REASONING_EFFORTS: AiReasoningEffort[] = ['default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 
@@ -32,10 +31,30 @@ function normalizeAiConfig(raw: Partial<AiConfig> | undefined, base: AiConfig): 
   }
 }
 
+function normalizeTimeSlots(raw: TimeSlotDef[] | undefined, base: TimeSlotDef[]) {
+  const normalized = Array.isArray(raw)
+    ? raw
+        .map((slot, index) => {
+          const id = typeof slot?.id === 'string' && slot.id.trim() ? slot.id.trim() : `slot-${index + 1}`
+          const baseSlot = base.find((item) => item.id === id)
+          const rawLabel = typeof slot?.label === 'string' ? slot.label.trim() : ''
+          const looksBroken = rawLabel.length > 0 && /^\?+$/.test(rawLabel)
+          return {
+            id,
+            label: rawLabel && !looksBroken ? rawLabel : baseSlot?.label || `??${index + 1}`,
+          }
+        })
+        .filter((slot, index, list) => list.findIndex((item) => item.id === slot.id) === index)
+    : []
+
+  return normalized.length > 0 ? normalized : base
+}
+
 export function normalizeGameConfig(parsed: Partial<GameConfig> | undefined): GameConfig {
   const baseConfig = cloneConfig(DEFAULT_CONFIG)
+  const timeSlots = normalizeTimeSlots(parsed?.timeSlots, baseConfig.timeSlots)
 
-  return {
+  const config = {
     ...baseConfig,
     ...parsed,
     prologue: Array.isArray(parsed?.prologue)
@@ -43,18 +62,32 @@ export function normalizeGameConfig(parsed: Partial<GameConfig> | undefined): Ga
       : baseConfig.prologue,
     scenes: Array.isArray(parsed?.scenes) && parsed.scenes.length > 0 ? parsed.scenes : baseConfig.scenes,
     stats: Array.isArray(parsed?.stats) && parsed.stats.length > 0 ? parsed.stats : baseConfig.stats,
+    timeSlots,
     dailyActions: Array.isArray(parsed?.dailyActions)
-      ? parsed.dailyActions.map((action) => ({ ...action, narrative: normalizeNarrative(action.narrative) }))
+      ? parsed.dailyActions.map((action) => {
+          const baseAction = baseConfig.dailyActions.find((item) => item.id === action.id)
+          return {
+            ...action,
+            availableTimeSlotIds: Array.isArray(action.availableTimeSlotIds)
+              ? action.availableTimeSlotIds.filter((slotId): slotId is string => timeSlots.some((slot) => slot.id === slotId))
+              : baseAction?.availableTimeSlotIds,
+            narrative: normalizeNarrative(action.narrative),
+          }
+        })
       : baseConfig.dailyActions,
     events: Array.isArray(parsed?.events)
       ? parsed.events.map((event) => ({ ...event, narrative: normalizeNarrative(event.narrative) }))
       : baseConfig.events,
-    maxEnergy: typeof parsed?.maxEnergy === 'number' ? Math.max(1, parsed.maxEnergy) : baseConfig.maxEnergy,
     defaultSceneId:
       typeof parsed?.defaultSceneId === 'string' && parsed.defaultSceneId.length > 0
         ? parsed.defaultSceneId
         : parsed?.scenes?.[0]?.id || baseConfig.defaultSceneId,
     ai: normalizeAiConfig(parsed?.ai, baseConfig.ai),
+  } satisfies GameConfig
+
+  return {
+    ...config,
+    maxEnergy: getMaxEnergyForConfig(config),
   }
 }
 

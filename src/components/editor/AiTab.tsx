@@ -1,4 +1,5 @@
-﻿import { Field, type EditorTabProps } from './shared'
+import type { EditorTabProps } from './helpers'
+import { Field } from './shared'
 
 export function AiTab({ config, setConfig }: EditorTabProps) {
   return (
@@ -48,7 +49,6 @@ export function AiTab({ config, setConfig }: EditorTabProps) {
             onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, model: e.target.value } }))}
           />
         </Field>
-
 
         <Field label="Reasoning effort">
           <select

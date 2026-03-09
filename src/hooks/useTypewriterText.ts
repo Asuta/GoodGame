@@ -2,9 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 const DEFAULT_TYPING_DELAY = 32
 
+type TypingState = {
+  text: string
+  visibleCount: number
+}
+
 export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DELAY) {
   const characters = useMemo(() => Array.from(text), [text])
-  const [visibleCount, setVisibleCount] = useState(characters.length)
+  const [typingState, setTypingState] = useState<TypingState>(() => ({
+    text,
+    visibleCount: 0,
+  }))
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
   const timerRef = useRef<number | null>(null)
 
@@ -26,24 +34,21 @@ export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DEL
       timerRef.current = null
     }
 
-    if (!characters.length || prefersReducedMotion) {
-      setVisibleCount(characters.length)
-      return
-    }
-
-    setVisibleCount(0)
+    if (!characters.length || prefersReducedMotion) return
 
     timerRef.current = window.setInterval(() => {
-      setVisibleCount((current) => {
-        if (current >= characters.length) {
+      setTypingState((current) => {
+        const synced = current.text === text ? current : { text, visibleCount: 0 }
+
+        if (synced.visibleCount >= characters.length) {
           if (timerRef.current !== null) {
             window.clearInterval(timerRef.current)
             timerRef.current = null
           }
-          return current
+          return { text, visibleCount: characters.length }
         }
 
-        return current + 1
+        return { text, visibleCount: synced.visibleCount + 1 }
       })
     }, typingDelay)
 
@@ -53,14 +58,16 @@ export function useTypewriterText(text: string, typingDelay = DEFAULT_TYPING_DEL
         timerRef.current = null
       }
     }
-  }, [characters, prefersReducedMotion, typingDelay])
+  }, [characters.length, prefersReducedMotion, text, typingDelay])
+
+  const visibleCount = prefersReducedMotion ? characters.length : typingState.text === text ? Math.min(typingState.visibleCount, characters.length) : 0
 
   const finishTyping = () => {
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current)
       timerRef.current = null
     }
-    setVisibleCount(characters.length)
+    setTypingState({ text, visibleCount: characters.length })
   }
 
   return {

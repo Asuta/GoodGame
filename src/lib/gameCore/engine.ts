@@ -1,4 +1,4 @@
-﻿import type { Effect, EventCondition, GameConfig, GameState, Narrative, NarrativeChoice, StoryEvent } from './types'
+import type { Effect, EventCondition, GameConfig, GameState, Narrative, NarrativeChoice, StoryEvent } from './types'
 
 export function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -6,6 +6,10 @@ export function clamp(value: number, min: number, max: number) {
 
 export function nextId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+export function getMaxEnergyForConfig(config: GameConfig) {
+  return Math.max(1, config.timeSlots.length || config.maxEnergy)
 }
 
 export function buildInitialStats(config: GameConfig): Record<string, number> {
@@ -18,14 +22,15 @@ export function buildInitialStats(config: GameConfig): Record<string, number> {
 export function createInitialGameState(config: GameConfig): GameState {
   return {
     day: 1,
-    energy: config.maxEnergy,
+    energy: getMaxEnergyForConfig(config),
+    timeSlotIndex: 0,
     prologueIndex: 0,
     stats: buildInitialStats(config),
     unlockedEventIds: [],
     dailyTriggeredEventIds: [],
     currentSceneId: config.defaultSceneId || config.scenes[0]?.id || '',
     currentMessage: '',
-    log: ['游戏开始。完成序章后将进入每日循环。'],
+    log: ['Game started. Finish the prologue to enter the daily routine.'],
   }
 }
 
@@ -62,7 +67,7 @@ export function normalizeNarrative(raw: Narrative | undefined): Narrative {
     choices: Array.isArray(raw?.choices)
       ? raw.choices.map((choice) => ({
           id: choice.id || nextId('choice'),
-          label: choice.label || '继续对话',
+          label: choice.label || 'Continue',
           statId: choice.statId || '',
           operator: choice.operator || '>=',
           value: Number(choice.value) || 0,
@@ -97,7 +102,7 @@ export function resolveTriggeredEvents(draft: GameState, config: GameConfig) {
     if (!matched) return
 
     stats = applyEffects(stats, config, event.effects)
-    log.push(`触发事件: ${event.title} - ${event.description}`)
+    log.push(`Event: ${event.title} - ${event.description}`)
     currentMessage = event.description
     if (event.sceneId) currentSceneId = event.sceneId
     dailyTriggered.push(event.id)
@@ -130,11 +135,15 @@ export function reconcileGameState(prev: GameState, config: GameConfig): GameSta
     nextStats[stat.id] = clamp(current, stat.min, stat.max)
   })
 
+  const maxEnergy = getMaxEnergyForConfig(config)
   const sceneExists = config.scenes.some((scene) => scene.id === prev.currentSceneId)
+  const timeSlotIndex = clamp(prev.timeSlotIndex ?? 0, 0, maxEnergy)
+  const remainingEnergy = maxEnergy - timeSlotIndex
 
   return {
     ...prev,
-    energy: clamp(prev.energy, 0, config.maxEnergy),
+    energy: clamp(prev.energy ?? remainingEnergy, 0, maxEnergy),
+    timeSlotIndex,
     prologueIndex: Math.min(prev.prologueIndex, config.prologue.length),
     stats: nextStats,
     currentSceneId: sceneExists ? prev.currentSceneId : config.defaultSceneId || config.scenes[0]?.id || '',
@@ -142,4 +151,3 @@ export function reconcileGameState(prev: GameState, config: GameConfig): GameSta
     dailyTriggeredEventIds: prev.dailyTriggeredEventIds.filter((id) => config.events.some((event) => event.id === id)),
   }
 }
-

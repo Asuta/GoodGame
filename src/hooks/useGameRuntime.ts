@@ -4,6 +4,7 @@ import {
   applyEffects,
   createInitialGameState,
   evalChoiceCondition,
+  getMaxEnergyForConfig,
   reconcileGameState,
   resolveTriggeredEvents,
   type DailyAction,
@@ -96,6 +97,9 @@ export function useGameRuntime(config: GameConfig) {
   const currentScene = useMemo(() => {
     return config.scenes.find((scene) => scene.id === game.currentSceneId) || config.scenes[0]
   }, [config.scenes, game.currentSceneId])
+  const maxEnergy = useMemo(() => getMaxEnergyForConfig(config), [config])
+  const remainingTimeSlots = Math.max(0, maxEnergy - game.timeSlotIndex)
+  const currentTimeSlot = game.timeSlotIndex >= maxEnergy ? null : config.timeSlots[game.timeSlotIndex] || null
 
   const inPrologue = game.prologueIndex < config.prologue.length
   const isDialogueOpen = dialogue !== null
@@ -436,11 +440,13 @@ export function useGameRuntime(config: GameConfig) {
   }
 
   const handleDoAction = async (action: DailyAction) => {
-    if (inPrologue || isDialogueOpen || isGeneratingNarrative || game.energy < action.cost) return
+    if (inPrologue || isDialogueOpen || isGeneratingNarrative || game.energy < action.cost || game.timeSlotIndex >= maxEnergy) return
 
+    const nextTimeSlotIndex = Math.min(maxEnergy, game.timeSlotIndex + Math.max(1, action.cost))
     const baseDraft = {
       ...game,
-      energy: game.energy - action.cost,
+      energy: Math.max(0, maxEnergy - nextTimeSlotIndex),
+      timeSlotIndex: nextTimeSlotIndex,
       currentMessage: action.flavor,
       currentSceneId: action.sceneId || game.currentSceneId,
       log: [...game.log, `Day ${game.day}: ${action.name}. ${action.flavor}`],
@@ -536,6 +542,9 @@ export function useGameRuntime(config: GameConfig) {
     nextAiRequestPreview,
     lastAiRequestPreview,
     unlockedCount,
+    currentTimeSlot,
+    remainingTimeSlots,
+    maxEnergy,
     handleAdvancePrologue,
     handleAiIntent,
     cancelAiNarrative,

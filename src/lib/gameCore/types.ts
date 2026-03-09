@@ -51,6 +51,11 @@ export type AiConfig = {
   promptNotes: string
 }
 
+export type TimeSlotDef = {
+  id: string
+  label: string
+}
+
 export type DailyAction = {
   id: string
   name: string
@@ -58,6 +63,7 @@ export type DailyAction = {
   cost: number
   flavor: string
   sceneId?: string
+  availableTimeSlotIds?: string[]
   effects: Effect[]
   narrative?: Narrative
 }
@@ -92,6 +98,7 @@ export type GameConfig = {
   subtitle: string
   prologue: string[]
   maxEnergy: number
+  timeSlots: TimeSlotDef[]
   defaultSceneId: string
   scenes: SceneDef[]
   stats: StatDef[]
@@ -103,6 +110,7 @@ export type GameConfig = {
 export type GameState = {
   day: number
   energy: number
+  timeSlotIndex: number
   prologueIndex: number
   stats: Record<string, number>
   unlockedEventIds: string[]

@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { AiTab } from '@/components/editor/AiTab'
 import { BaseTab } from '@/components/editor/BaseTab'
 import { DataTab } from '@/components/editor/DataTab'
-import { Field, linesToText, textToLines } from '@/components/editor/shared'
+import { linesToText, textToLines } from '@/components/editor/helpers'
 import { MediaTab } from '@/components/editor/MediaTab'
+import { Field } from '@/components/editor/shared'
 import { StatsTab } from '@/components/editor/StatsTab'
 import { useGameConfig } from '@/hooks/useGameConfig'
 import { DEFAULT_CONFIG, nextId, type Operator } from '@/lib/gameCore'
@@ -40,6 +41,7 @@ export default function Editor() {
         <div className="mb-4 flex flex-wrap gap-2">
           {[
             ['base', '基础'],
+            ['ai', 'AI 配置'],
             ['media', '图片场景'],
             ['stats', '属性'],
             ['actions', '日常选项'],
@@ -166,6 +168,47 @@ export default function Editor() {
                     </select>
                   </Field>
                 </div>
+                <Field label="Time slots">
+                  <div className="flex flex-wrap gap-2 rounded-lg border border-slate-200 p-3">
+                    {config.timeSlots.map((slot) => {
+                      const checked = action.availableTimeSlotIds?.includes(slot.id) ?? false
+                      return (
+                        <label key={slot.id} className="flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700">
+                          <input
+                            checked={checked}
+                            onChange={(e) =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                dailyActions: prev.dailyActions.map((item) => {
+                                  if (item.id !== action.id) return item
+                                  const nextIds = new Set(item.availableTimeSlotIds && item.availableTimeSlotIds.length > 0 ? item.availableTimeSlotIds : prev.timeSlots.map((timeSlot) => timeSlot.id))
+                                  if (e.target.checked) nextIds.add(slot.id)
+                                  else nextIds.delete(slot.id)
+                                  return { ...item, availableTimeSlotIds: Array.from(nextIds) }
+                                }),
+                              }))
+                            }
+                            type="checkbox"
+                          />
+                          <span>{slot.label}</span>
+                        </label>
+                      )
+                    })}
+                    <button
+                      className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm"
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          dailyActions: prev.dailyActions.map((item) => (item.id === action.id ? { ...item, availableTimeSlotIds: prev.timeSlots.map((slot) => slot.id) } : item)),
+                        }))
+                      }
+                      type="button"
+                    >
+                      All
+                    </button>
+                  </div>
+                </Field>
+
 
                 <p className="text-xs font-semibold text-slate-500">对话分支选项</p>
                 {(action.narrative?.choices || []).map((choice, choiceIndex) => (
@@ -501,6 +544,7 @@ export default function Editor() {
                         lines: ['她看向你，等待你接下来的动作。'],
                         choices: [],
                       },
+                      availableTimeSlotIds: prev.timeSlots.map((slot) => slot.id),
                     },
                   ],
                 }))

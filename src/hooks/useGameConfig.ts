@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 
-import { CONFIG_STORAGE_KEY, DEFAULT_CONFIG, cloneConfig, loadConfig, saveConfig, type GameConfig } from '@/lib/gameCore'
+import { CONFIG_STORAGE_KEY, DEFAULT_CONFIG, cloneConfig, loadConfig, normalizeGameConfig, saveConfig, type GameConfig } from '@/lib/gameCore'
 
 export function useGameConfig() {
   const [config, setConfigState] = useState<GameConfig>(() => loadConfig())
@@ -22,7 +22,7 @@ export function useGameConfig() {
   const setConfig: Dispatch<SetStateAction<GameConfig>> = (updater) => {
     setConfigState((prev) => {
       const next = typeof updater === 'function' ? (updater as (value: GameConfig) => GameConfig)(prev) : updater
-      return next
+      return normalizeGameConfig(next)
     })
   }
 

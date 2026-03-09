@@ -28,7 +28,6 @@ export default function Home() {
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiLogOpen, setAiLogOpen] = useState(false)
-  const [customIntent, setCustomIntent] = useState('')
   const {
     game,
     currentScene,
@@ -43,6 +42,9 @@ export default function Home() {
     nextAiRequestPreview,
     lastAiRequestPreview,
     unlockedCount,
+    currentTimeSlot,
+    remainingTimeSlots,
+    maxEnergy,
     handleAdvancePrologue,
     handleAiIntent,
     handleDialogueChoice,
@@ -53,6 +55,8 @@ export default function Home() {
   } = useGameRuntime(config)
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
   const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '', typingDelay)
+  const aiModeEnabled = config.ai.enabled
+  const customIntentFormKey = dialogue ? `${dialogue.packet.source}-${dialogue.packet.lines[0] || ''}` : 'idle'
   const isAiDialogueEnding = Boolean(
     dialogue &&
       dialogue.packet.aiSession &&
@@ -62,6 +66,16 @@ export default function Home() {
       !canShowAiSuggestions,
   )
   const dialogueButtonLabel = isGeneratingNarrative ? '\u751f\u6210\u4e2d...' : isAiDialogueEnding ? '\u7ed3\u675f\u5bf9\u8bdd' : isTyping ? '\u663e\u793a\u5168\u6587' : '\u4e0b\u4e00\u6b65'
+  const visibleActions = useMemo(() => {
+    if (!currentTimeSlot) return []
+    return config.dailyActions.filter((action) => {
+      if (!action.availableTimeSlotIds || action.availableTimeSlotIds.length === 0) return true
+      return action.availableTimeSlotIds.includes(currentTimeSlot.id)
+    })
+  }, [config.dailyActions, currentTimeSlot])
+  const setAiEnabled = (enabled: boolean) => {
+    setConfig((prev) => ({ ...prev, ai: { ...prev.ai, enabled } }))
+  }
 
   const aiLogPanel = aiLogOpen ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm" onClick={() => setAiLogOpen(false)}>
@@ -102,27 +116,47 @@ export default function Home() {
     <section className="mb-4 rounded-2xl border border-cyan-200/60 bg-white/88 p-4 shadow-lg shadow-cyan-100/40 backdrop-blur">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-cyan-700">AI Settings</p>
-          <h2 className="text-lg font-semibold text-slate-900">Player AI settings</h2>
+          <p className="text-xs uppercase tracking-[0.22em] text-cyan-700">Game Settings</p>
+          <h2 className="text-lg font-semibold text-slate-900">试玩设置</h2>
         </div>
         <button className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm text-white" onClick={() => setSettingsOpen(false)} type="button">
-          Hide settings
+          收起设置
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          <span className="font-medium">Enable AI story</span>
-          <span className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
-            <input
-              checked={config.ai.enabled}
-              onChange={(e) => setConfig((prev) => ({ ...prev, ai: { ...prev.ai, enabled: e.target.checked } }))}
-              type="checkbox"
-            />
-            <span>Allow players to use their own model credentials</span>
-          </span>
-        </label>
+      <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-cyan-700">AI Mode</p>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">{aiModeEnabled ? 'AI 模式已开启' : 'AI 模式已关闭'}</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {aiModeEnabled ? '行动后会请求模型续写剧情并结算互动结果。' : '行动会回退到预设脚本，不会发送 AI 请求。'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                aiModeEnabled ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+              }`}
+              onClick={() => setAiEnabled(true)}
+              type="button"
+            >
+              开启 AI 模式
+            </button>
+            <button
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                aiModeEnabled ? 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50' : 'bg-slate-900 text-white shadow-md shadow-slate-200'
+              }`}
+              onClick={() => setAiEnabled(false)}
+              type="button"
+            >
+              关闭 AI 模式
+            </button>
+          </div>
+        </div>
+      </div>
 
+      <div className="grid gap-3 md:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm text-slate-700">
           <span className="font-medium">API format</span>
           <select
@@ -206,7 +240,7 @@ export default function Home() {
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-slate-500">These values are stored in this browser. For GPT-5.4, you can also switch reasoning strength here, including turning reasoning off entirely.</p>
+      <p className="mt-3 text-xs text-slate-500">这些值会保存在当前浏览器中。启用 AI 模式后，会使用这里配置的模型参数继续生成剧情。</p>
     </section>
   ) : null
 
@@ -230,11 +264,6 @@ export default function Home() {
     return () => window.clearTimeout(timer)
   }, [autoPlayEnabled, canShowAiSuggestions, canShowChoices, dialogue, handleAdvancePrologue, handleDialogueNext, inPrologue, isTyping])
 
-
-  useEffect(() => {
-    setCustomIntent('')
-  }, [dialogue?.packet.source, dialogue?.packet.lines[0]])
-
   const handleDialoguePanelClick = () => {
     if (isTyping) {
       finishTyping()
@@ -256,11 +285,11 @@ export default function Home() {
       <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
         <div>
           <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-200/90">行动安排</p>
-          <p className="text-[11px] text-slate-400">{config.ai.enabled ? `AI story - ${config.ai.apiMode === 'responses' ? 'Responses' : 'Chat Completions'}` : 'Today commands'}</p>
+          <p className="text-[11px] text-slate-400">{aiModeEnabled ? `AI 模式 - ${config.ai.apiMode === 'responses' ? 'Responses' : 'Chat Completions'}` : '静态剧情模式'}</p>
         </div>
         {!inPrologue && (
           <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-            EN {game.energy}/{config.maxEnergy}
+            {currentTimeSlot ? `${currentTimeSlot.label} | ${remainingTimeSlots}/${maxEnergy}` : `\u5df2\u7528\u5b8c ${maxEnergy}/${maxEnergy}`}
           </div>
         )}
       </div>
@@ -275,11 +304,11 @@ export default function Home() {
         </button>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
-          {config.dailyActions.map((action) => (
+          {visibleActions.map((action) => (
             <button
               key={action.id}
               className="group rounded-xl border border-slate-700/80 bg-[linear-gradient(180deg,rgba(18,32,58,0.86),rgba(10,20,39,0.9))] p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:-translate-y-0.5 hover:border-cyan-400/70 hover:bg-[linear-gradient(180deg,rgba(20,40,72,0.92),rgba(12,24,46,0.95))] disabled:opacity-40"
-              disabled={game.energy < action.cost || isDialogueOpen || isGeneratingNarrative}
+              disabled={game.energy < action.cost || isDialogueOpen || isGeneratingNarrative || !currentTimeSlot}
               onClick={() => handleDoAction(action)}
             >
               <div className="flex items-start justify-between gap-2">
@@ -292,6 +321,11 @@ export default function Home() {
             </button>
           ))}
 
+          {visibleActions.length === 0 && currentTimeSlot ? (
+            <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-3 py-3 text-xs text-slate-400 sm:col-span-2">
+              {'\u8fd9\u4e2a\u65f6\u6bb5\u6ca1\u6709\u53ef\u6267\u884c\u7684\u9884\u8bbe\u884c\u52a8\uff0c\u53ef\u4ee5\u76f4\u63a5\u7ed3\u675f\u4eca\u5929\u3002'}
+            </div>
+          ) : null}
           <button
             className="rounded-xl border border-amber-400/20 bg-[linear-gradient(180deg,#f59e0b,#d97706)] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(217,119,6,0.28)] transition hover:-translate-y-0.5 hover:brightness-105 disabled:opacity-40 sm:col-span-2"
             disabled={isDialogueOpen || isGeneratingNarrative}
@@ -322,7 +356,7 @@ export default function Home() {
             AI log
           </button>
           <button className="rounded-lg bg-cyan-700 px-3 py-1.5 text-white" onClick={() => setSettingsOpen((prev) => !prev)} type="button">
-            {settingsOpen ? 'Hide settings' : 'AI settings'}
+            {settingsOpen ? '收起设置' : '游戏设置'}
           </button>
           <button className="rounded-lg bg-amber-700 px-3 py-1.5 text-white" onClick={handleRestart}>
             重开试玩
@@ -358,6 +392,33 @@ export default function Home() {
             <div className="absolute left-4 top-4 rounded-md bg-black/45 px-2 py-1 text-xs tracking-[0.2em] text-amber-100/90">
               SCENE: {currentScene?.name || '未命名场景'}
             </div>
+
+            {!inPrologue ? (
+              <div className="pointer-events-none absolute right-4 top-4 z-20 flex gap-2 md:right-5 md:top-5">
+                {config.timeSlots.map((slot, index) => {
+                  const isPast = index < game.timeSlotIndex
+                  const isCurrent = index === game.timeSlotIndex && remainingTimeSlots > 0
+                  const isFuture = index > game.timeSlotIndex
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`min-w-16 rounded-2xl border px-3 py-2 text-center shadow-lg backdrop-blur ${
+                        isCurrent
+                          ? 'border-cyan-300/70 bg-cyan-400/25 text-cyan-50'
+                          : isPast
+                            ? 'border-slate-700/80 bg-slate-950/70 text-slate-500'
+                            : isFuture
+                              ? 'border-slate-500/50 bg-slate-900/70 text-slate-200'
+                              : 'border-slate-700/80 bg-slate-950/70 text-slate-500'
+                      }`}
+                    >
+                      <p className="text-[10px] uppercase tracking-[0.24em]">Time</p>
+                      <p className="mt-1 text-lg font-semibold">{slot.label}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
 
             {!isDialogueOpen && actionPanel}
           </div>
@@ -441,22 +502,24 @@ export default function Home() {
                       </button>
                     ))}
                     <form
+                      key={customIntentFormKey}
                       className="flex min-w-[260px] flex-1 gap-2"
                       onClick={(event) => event.stopPropagation()}
                       onSubmit={(event) => {
                         event.preventDefault()
-                        const value = customIntent.trim()
+                        const formData = new FormData(event.currentTarget)
+                        const value = String(formData.get('customIntent') || '').trim()
                         if (!value) return
                         void handleAiIntent(value)
-                        setCustomIntent('')
+                        event.currentTarget.reset()
                       }}
                     >
                       <input
                         className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
-                        onChange={(event) => setCustomIntent(event.target.value)}
+                        defaultValue=""
+                        name="customIntent"
                         placeholder={'\u8f93\u5165\u4f60\u60f3\u505a\u7684\u4e8b...'}
                         type="text"
-                        value={customIntent}
                       />
                       <button className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white" type="submit">
                         {'\u53d1\u9001'}
@@ -501,7 +564,7 @@ export default function Home() {
             <div className="rounded-lg bg-slate-800/90 p-2">
               <p className="text-xs text-slate-400">行动力</p>
               <p className="font-semibold">
-                {game.energy}/{config.maxEnergy}
+                {remainingTimeSlots}/{maxEnergy}
               </p>
             </div>
             <div className="rounded-lg bg-slate-800/90 p-2">

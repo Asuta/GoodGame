@@ -1,4 +1,6 @@
-import { Field, type ConfigSetter, updateConfigText } from './shared'
+import type { ConfigSetter } from './helpers'
+import { updateConfigText } from './helpers'
+import { Field } from './shared'
 
 type DataTabProps = {
   configText: string

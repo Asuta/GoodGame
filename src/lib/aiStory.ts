@@ -168,12 +168,15 @@ function buildStatsContext(config: GameConfig, state: GameState) {
 
 function buildBaseContext(action: DailyAction, config: GameConfig, state: GameState) {
   const currentScene = config.scenes.find((scene) => scene.id === state.currentSceneId)
+  const currentTimeSlot = state.timeSlotIndex >= config.timeSlots.length ? null : config.timeSlots[state.timeSlotIndex] || null
 
   return {
     gameTitle: config.title,
     subtitle: config.subtitle,
     day: state.day,
     energy: `${state.energy}/${config.maxEnergy}`,
+    currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
+    timeSlots: config.timeSlots,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
     heroine: {
       name: config.ai.characterName,

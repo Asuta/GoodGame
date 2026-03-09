@@ -1,6 +1,7 @@
 import { nextId } from '@/lib/gameCore'
 
-import { Field, type EditorTabProps } from './shared'
+import type { EditorTabProps } from './helpers'
+import { Field } from './shared'
 
 export function StatsTab({ config, setConfig }: EditorTabProps) {
   return (
