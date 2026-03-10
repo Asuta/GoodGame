@@ -445,6 +445,12 @@ export function useGameRuntime(config: GameConfig) {
       playerIntents: [...session.playerIntents, intent],
     }
 
+    setGame((prev) => ({
+      ...prev,
+      currentMessage: turn.line,
+      log: [...prev.log, `AI剧情: ${turn.line}`],
+    }))
+
     jumpToPacket(packetFromAction(session.action, [turn.line], nextSession, turn.choices), dialogue.pending)
   }
 
@@ -559,7 +565,7 @@ export function useGameRuntime(config: GameConfig) {
 
     setGame({
       ...baseDraft,
-      log: [...baseDraft.log, `AI scene: ${action.name}`],
+      log: [...baseDraft.log, `AI scene: ${action.name}`, `AI剧情: ${turn.line}`],
       currentMessage: turn.line,
     })
 
@@ -611,7 +617,7 @@ export function useGameRuntime(config: GameConfig) {
     setGame({
       ...resolved.state,
       currentMessage: line,
-      log: [...resolved.state.log, `AI free time: ${idleAction.name}`],
+      log: [...resolved.state.log, `AI free time: ${idleAction.name}`, `AI剧情: ${line}`],
     })
 
     const session: AiDialogueSession = {

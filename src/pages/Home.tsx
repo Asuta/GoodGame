@@ -530,7 +530,7 @@ export default function Home() {
                       }}
                       type="button"
                     >
-                      直接结束
+                      结束行动
                     </button>
                   </>
                 ) : (
