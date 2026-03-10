@@ -29,6 +29,7 @@ type AiDialogueSession = {
   state: GameState
   generatedLines: string[]
   playerIntents: string[]
+  displayTimeSlotIndex: number
 }
 
 type DialoguePacket = {
@@ -38,6 +39,7 @@ type DialoguePacket = {
   choices: NarrativeChoice[]
   aiSession?: AiDialogueSession
   aiSuggestions?: string[]
+  displayTimeSlotIndex?: number
 }
 
 type DialogueState = {
@@ -53,6 +55,7 @@ function packetFromAction(
   linesOverride?: string[],
   aiSession?: AiDialogueSession,
   aiSuggestions?: string[],
+  displayTimeSlotIndex?: number,
 ): DialoguePacket {
   const lines = linesOverride?.length ? linesOverride : action.narrative?.lines?.length ? action.narrative.lines : [action.flavor]
   return {
@@ -62,6 +65,7 @@ function packetFromAction(
     choices: aiSession ? [] : action.narrative?.choices || [],
     aiSession,
     aiSuggestions,
+    displayTimeSlotIndex: aiSession?.displayTimeSlotIndex ?? displayTimeSlotIndex,
   }
 }
 
@@ -101,6 +105,7 @@ export function useGameRuntime(config: GameConfig) {
   const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [lastAiRequestPreview, setLastAiRequestPreview] = useState<AiRequestPreview | null>(null)
+  const [displayTimeSlotIndexOverride, setDisplayTimeSlotIndexOverride] = useState<number | null>(null)
   const aiAbortRef = useRef<AbortController | null>(null)
   const aiRequestIdRef = useRef(0)
 
@@ -119,8 +124,9 @@ export function useGameRuntime(config: GameConfig) {
     return config.scenes.find((scene) => scene.id === game.currentSceneId) || config.scenes[0]
   }, [config.scenes, game.currentSceneId])
   const maxEnergy = useMemo(() => getMaxEnergyForConfig(config), [config])
-  const remainingTimeSlots = Math.max(0, maxEnergy - game.timeSlotIndex)
-  const currentTimeSlot = game.timeSlotIndex >= maxEnergy ? null : config.timeSlots[game.timeSlotIndex] || null
+  const displayTimeSlotIndex = displayTimeSlotIndexOverride ?? dialogue?.packet.displayTimeSlotIndex ?? game.timeSlotIndex
+  const remainingTimeSlots = Math.max(0, maxEnergy - displayTimeSlotIndex)
+  const currentTimeSlot = displayTimeSlotIndex >= maxEnergy ? null : config.timeSlots[displayTimeSlotIndex] || null
 
   const inPrologue = game.prologueIndex < config.prologue.length
   const isDialogueOpen = dialogue !== null
@@ -147,6 +153,7 @@ export function useGameRuntime(config: GameConfig) {
   const openPackets = (packets: DialoguePacket[]) => {
     if (!packets.length) return
     const [first, ...rest] = packets
+    setDisplayTimeSlotIndexOverride(first.displayTimeSlotIndex ?? null)
     setDialogue({ packet: first, lineIndex: 0, pending: rest })
     setGame((prev) => ({
       ...prev,
@@ -156,11 +163,13 @@ export function useGameRuntime(config: GameConfig) {
   }
 
   const closeDialogue = () => {
+    setDisplayTimeSlotIndexOverride(null)
     setDialogue(null)
     setGame((prev) => ({ ...prev, currentMessage: '' }))
   }
 
   const jumpToPacket = (packet: DialoguePacket, pending: DialoguePacket[]) => {
+    setDisplayTimeSlotIndexOverride(packet.displayTimeSlotIndex ?? null)
     setDialogue({ packet, lineIndex: 0, pending })
     setGame((prev) => ({
       ...prev,
@@ -472,6 +481,7 @@ export function useGameRuntime(config: GameConfig) {
         source: '分支结果',
         lines,
         choices: [],
+        displayTimeSlotIndex: dialogue.packet.displayTimeSlotIndex,
       },
       dialogue.pending,
     )
@@ -502,6 +512,7 @@ export function useGameRuntime(config: GameConfig) {
   const handleDoAction = async (action: DailyAction) => {
     if (inPrologue || isDialogueOpen || isGeneratingNarrative || game.energy < action.cost || game.timeSlotIndex >= maxEnergy) return
 
+    setDisplayTimeSlotIndexOverride(game.timeSlotIndex)
     const nextTimeSlotIndex = Math.min(maxEnergy, game.timeSlotIndex + Math.max(1, action.cost))
     const baseDraft = {
       ...game,
@@ -517,7 +528,7 @@ export function useGameRuntime(config: GameConfig) {
       stats: applyEffects(baseDraft.stats, config, action.effects),
     }
     const scriptedResolved = resolveTriggeredEvents(scriptedDraft, config)
-    const fallbackPackets = [packetFromAction(action), ...scriptedResolved.triggeredEvents.map(packetFromEvent)]
+    const fallbackPackets = [packetFromAction(action, undefined, undefined, undefined, game.timeSlotIndex), ...scriptedResolved.triggeredEvents.map(packetFromEvent)]
 
     if (!canUseAiStory(config)) {
       setAiError(null)
@@ -536,6 +547,7 @@ export function useGameRuntime(config: GameConfig) {
       state: baseDraft,
       generatedLines: [],
       playerIntents: [],
+      displayTimeSlotIndex: game.timeSlotIndex,
     }
 
     const turn = await requestAiTurn(baseSession)
@@ -562,6 +574,7 @@ export function useGameRuntime(config: GameConfig) {
   const handleDoNothing = async () => {
     if (inPrologue || isDialogueOpen || isGeneratingNarrative || game.timeSlotIndex >= maxEnergy) return
 
+    setDisplayTimeSlotIndexOverride(game.timeSlotIndex)
     const idleAction = createFreeTimeAction(config, game)
     const nextTimeSlotIndex = Math.min(maxEnergy, game.timeSlotIndex + 1)
     const baseDraft = {
@@ -574,7 +587,7 @@ export function useGameRuntime(config: GameConfig) {
     }
 
     const resolved = resolveTriggeredEvents(baseDraft, config)
-    const fallbackPackets = [packetFromAction(idleAction), ...resolved.triggeredEvents.map(packetFromEvent)]
+    const fallbackPackets = [packetFromAction(idleAction, undefined, undefined, undefined, game.timeSlotIndex), ...resolved.triggeredEvents.map(packetFromEvent)]
 
     if (!canUseAiStory(config)) {
       setAiError(null)
@@ -606,6 +619,7 @@ export function useGameRuntime(config: GameConfig) {
       state: baseDraft,
       generatedLines: [line],
       playerIntents: [],
+      displayTimeSlotIndex: game.timeSlotIndex,
     }
 
     openPackets([
@@ -616,6 +630,7 @@ export function useGameRuntime(config: GameConfig) {
         choices: [],
         aiSession: session,
         aiSuggestions: [],
+        displayTimeSlotIndex: game.timeSlotIndex,
       },
       ...resolved.triggeredEvents.map(packetFromEvent),
     ])
@@ -626,6 +641,7 @@ export function useGameRuntime(config: GameConfig) {
     aiAbortRef.current?.abort()
     aiAbortRef.current = null
     setIsGeneratingNarrative(false)
+    setDisplayTimeSlotIndexOverride(null)
     setAiError(null)
     setDialogue(null)
     setGame(createInitialGameState(config))
@@ -638,6 +654,7 @@ export function useGameRuntime(config: GameConfig) {
     canShowChoices,
     canShowAiSuggestions,
     dialogue,
+    displayTimeSlotIndex,
     inPrologue,
     isDialogueOpen,
     isGeneratingNarrative,

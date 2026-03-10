@@ -35,6 +35,7 @@ export default function Home() {
     canShowChoices,
     canShowAiSuggestions,
     dialogue,
+    displayTimeSlotIndex,
     inPrologue,
     isDialogueOpen,
     isGeneratingNarrative,
@@ -389,9 +390,9 @@ export default function Home() {
             {!inPrologue ? (
               <div className="pointer-events-none absolute right-4 top-4 z-20 flex gap-2 md:right-5 md:top-5">
                 {config.timeSlots.map((slot, index) => {
-                  const isPast = index < game.timeSlotIndex
-                  const isCurrent = index === game.timeSlotIndex && remainingTimeSlots > 0
-                  const isFuture = index > game.timeSlotIndex
+                  const isPast = index < displayTimeSlotIndex
+                  const isCurrent = index === displayTimeSlotIndex && remainingTimeSlots > 0
+                  const isFuture = index > displayTimeSlotIndex
                   return (
                     <div
                       key={slot.id}
