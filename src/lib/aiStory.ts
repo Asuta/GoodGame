@@ -1,4 +1,4 @@
-﻿import { getMaxEnergyForConfig } from './gameCore/engine'
+import { getMaxEnergyForConfig } from './gameCore/engine'
 import type { DailyAction, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
 
 type GenerateActionStoryParams = {
@@ -199,6 +199,26 @@ async function parseErrorMessage(response: Response) {
   }
 }
 
+async function parseSuccessfulResponseText(response: Response, config: GameConfig) {
+  const text = await response.text()
+  const trimmed = text.trim()
+
+  if (!trimmed) {
+    throw new Error('AI service returned an empty response body. Please check whether the configured endpoint supports this request mode.')
+  }
+
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  const looksLikeJson = contentType.includes('application/json') || contentType.includes('+json') || trimmed.startsWith('{') || trimmed.startsWith('[')
+
+  if (!looksLikeJson) return trimmed
+
+  try {
+    const data = JSON.parse(trimmed) as ResponsesApiResponse | ChatCompletionsResponse
+    return config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
+  } catch {
+    return trimmed
+  }
+}
 function buildStatsContext(config: GameConfig, state: GameState) {
   return config.stats.map((stat) => ({
     id: stat.id,
@@ -719,13 +739,14 @@ async function requestAiText(
   onRawText?: (value: string) => void,
 ) {
   const endpoint = buildEndpoint(config)
+  const shouldStream = config.ai.apiMode === 'responses' || Boolean(onRawText)
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.ai.apiKey}`,
     },
-    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, Boolean(onRawText))),
+    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, shouldStream)),
     signal,
   })
 
@@ -733,15 +754,14 @@ async function requestAiText(
     throw new Error(await parseErrorMessage(response))
   }
 
-  const fallbackResponse = onRawText && response.body ? response.clone() : null
+  const fallbackResponse = response.body ? response.clone() : null
   const contentType = response.headers.get('content-type') || ''
-  if (onRawText && response.body && contentType.includes('text/event-stream')) {
-    const streamedText = await readStreamedAiText(response, config, onRawText)
+  if (response.body && contentType.includes('text/event-stream')) {
+    const streamedText = await readStreamedAiText(response, config, onRawText || (() => {}))
     if (streamedText.trim()) return streamedText
   }
 
-  const data = (await (fallbackResponse || response).json()) as ResponsesApiResponse | ChatCompletionsResponse
-  const finalText = config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
+  const finalText = await parseSuccessfulResponseText(fallbackResponse || response, config)
   if (onRawText) onRawText(finalText)
   return finalText
 }
@@ -816,3 +836,4 @@ export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams)
   })
   return parseSingleLineNarration(rawText)
 }
+
