@@ -106,6 +106,11 @@ export type GameConfig = {
   ai: AiConfig
 }
 
+export type DiaryEntry = {
+  day: number
+  content: string
+}
+
 export type GameState = {
   day: number
   energy: number
@@ -117,4 +122,6 @@ export type GameState = {
   currentSceneId: string
   currentMessage: string
   log: string[]
+  currentDayLog: string[]
+  diaryEntries: DiaryEntry[]
 }

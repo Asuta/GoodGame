@@ -1,5 +1,5 @@
 import { getMaxEnergyForConfig } from './gameCore/engine'
-import type { DailyAction, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
+import type { DailyAction, DiaryEntry, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
 
 type GenerateActionStoryParams = {
   action: DailyAction
@@ -25,6 +25,12 @@ type GenerateFreeTimeStoryParams = {
   config: GameConfig
   state: GameState
   onLineUpdate?: (value: string) => void
+  signal?: AbortSignal
+}
+
+type GenerateDailyDiaryParams = {
+  config: GameConfig
+  state: GameState
   signal?: AbortSignal
 }
 
@@ -69,6 +75,13 @@ type SingleLinePayload = {
   lines?: string[]
 }
 
+type DiaryPayload = {
+  diary?: string
+  content?: string
+  line?: string
+  lines?: string[]
+}
+
 type InteractionEffectPayload = {
   statId?: string
   id?: string
@@ -92,8 +105,12 @@ export type AiInteractionEvaluation = {
   summary: string
 }
 
+export type AiDiaryEntry = {
+  content: string
+}
+
 export type AiRequestPreview = {
-  kind: 'story-turn' | 'interaction-evaluation' | 'free-time'
+  kind: 'story-turn' | 'interaction-evaluation' | 'free-time' | 'daily-diary'
   endpoint: string
   systemPrompt: string
   userPrompt: string
@@ -251,6 +268,13 @@ function buildCurrentStatValues(config: GameConfig, state: GameState) {
   }))
 }
 
+function buildDiaryContext(diaryEntries: DiaryEntry[]) {
+  return diaryEntries.map((entry) => ({
+    day: entry.day,
+    content: entry.content,
+  }))
+}
+
 function buildSharedStaticContext(config: GameConfig) {
   return {
     gameTitle: config.title,
@@ -279,6 +303,7 @@ function buildBaseContext(action: DailyAction, config: GameConfig, state: GameSt
     currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
     currentStats: buildCurrentStatValues(config, state),
+    privateDiaryHistory: buildDiaryContext(state.diaryEntries),
     latestAction: {
       id: action.id,
       name: action.name,
@@ -412,9 +437,52 @@ function buildFreeTimeContext(params: GenerateFreeTimeStoryParams) {
     currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
     currentStats: buildCurrentStatValues(config, state),
+    privateDiaryHistory: buildDiaryContext(state.diaryEntries),
     recentStory: state.log.slice(-config.ai.recentLogLimit),
     instruction: 'The player made no arrangement for this time slot. Describe what the girl chooses to do on her own.',
   }
+}
+
+function buildDailyDiarySystemPrompt(config: GameConfig) {
+  return [
+    'You are writing the heroine\'s private end-of-day diary for a daily raising visual novel.',
+    'Write in Simplified Chinese.',
+    'Return JSON only, using the exact shape {"diary":"..."}.',
+    'The diary must be private, intimate, and written as if the heroine believes the player will never read it.',
+    'Write about what happened today, her hidden thoughts, emotions, motives, goals, anxieties, trust shifts, and subtle mindset changes.',
+    'Keep it grounded in the day\'s events and her trauma-aware personality.',
+    'Length target: around 120 to 180 Chinese characters.',
+    'Do not use Markdown. Do not explain your answer. Do not include any fields other than diary.',
+    'Treat the static world context below as canonical and stable background information.',
+    config.ai.promptNotes.trim(),
+    'Static world context:',
+    JSON.stringify(buildSharedStaticContext(config), null, 2),
+  ].join('\n')
+}
+
+function buildDailyDiaryContext(params: GenerateDailyDiaryParams) {
+  const { config, state } = params
+  const currentScene = config.scenes.find((scene) => scene.id === state.currentSceneId)
+
+  return {
+    day: state.day,
+    currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
+    currentStats: buildCurrentStatValues(config, state),
+    todayLog: state.currentDayLog,
+    previousDiaryEntries: buildDiaryContext(state.diaryEntries),
+  }
+}
+
+function buildDailyDiaryUserPrompt(params: GenerateDailyDiaryParams) {
+  const dynamicContext = buildDailyDiaryContext(params)
+
+  return [
+    'Use the end-of-day context below to write tonight\'s private diary entry.',
+    'The entry should sound like the heroine reflecting to herself in secret, not speaking to the player directly.',
+    'Mention specific moments from today, but focus more on inner feeling, hesitation, longing, fear, trust, and tomorrow\'s quiet intentions.',
+    'End-of-day context:',
+    JSON.stringify(dynamicContext, null, 2),
+  ].join('\n\n')
 }
 
 function buildFreeTimeUserPrompt(params: GenerateFreeTimeStoryParams) {
@@ -570,6 +638,22 @@ function parseSingleLineNarration(rawText: string) {
   const line = extractStoryLineFromPlainText(rawText)
   if (!line) throw new Error('AI returned no usable free-time narration.')
   return line
+}
+
+function parseDailyDiary(rawText: string): AiDiaryEntry {
+  for (const candidate of extractJsonCandidates(rawText)) {
+    try {
+      const parsed = JSON.parse(candidate) as DiaryPayload
+      const content = sanitizeText(parsed.diary || parsed.content || parsed.line || parsed.lines?.[0] || '')
+      if (content) return { content }
+    } catch {
+      continue
+    }
+  }
+
+  const content = sanitizeText(extractStoryLineFromPlainText(rawText))
+  if (!content) throw new Error('AI returned no usable diary entry.')
+  return { content }
 }
 
 function sanitizeEffects(config: GameConfig, effects: InteractionEffectPayload[] | undefined) {
@@ -862,6 +946,20 @@ export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): 
   }
 }
 
+export function buildDailyDiaryPreview(params: GenerateDailyDiaryParams): AiRequestPreview {
+  const systemPrompt = buildDailyDiarySystemPrompt(params.config)
+  const userPrompt = buildDailyDiaryUserPrompt(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
+  return {
+    kind: 'daily-diary',
+    endpoint: buildEndpoint(params.config),
+    systemPrompt,
+    userPrompt,
+    context: buildDailyDiaryContext(params),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 260, false, promptCacheKey),
+  }
+}
+
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
   const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
@@ -895,5 +993,12 @@ export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams)
     }
   })
   return parseSingleLineNarration(rawText)
+}
+
+export async function generateDailyDiary(params: GenerateDailyDiaryParams) {
+  const preview = buildDailyDiaryPreview(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 260, promptCacheKey, params.signal)
+  return parseDailyDiary(rawText)
 }
 
