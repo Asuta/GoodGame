@@ -128,21 +128,6 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function hashPromptCacheKey(value: string) {
-  let hash = 2166136261
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return (hash >>> 0).toString(36)
-}
-
-function buildPromptCacheKey(config: GameConfig, systemPrompt: string) {
-  return `goodgame:${config.ai.model}:${hashPromptCacheKey(systemPrompt)}`
-}
-
 function extractJsonCandidates(raw: string) {
   const candidates = [raw.trim()]
   const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -659,13 +644,20 @@ function buildRequestPayload(
   userPrompt: string,
   maxTokens: number,
   stream = false,
-  promptCacheKey?: string,
 ) {
   return config.ai.apiMode === 'responses'
     ? {
         model: config.ai.model,
-        instructions: systemPrompt,
         input: [
+          {
+            role: 'system',
+            content: [
+              {
+                type: 'input_text',
+                text: systemPrompt,
+              },
+            ],
+          },
           {
             role: 'user',
             content: [
@@ -677,7 +669,6 @@ function buildRequestPayload(
           },
         ],
         ...(buildResponsesReasoning(config) ? { reasoning: buildResponsesReasoning(config) } : {}),
-        ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
         max_output_tokens: maxTokens,
         stream,
       }
@@ -788,7 +779,6 @@ async function requestAiText(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number,
-  promptCacheKey?: string,
   signal?: AbortSignal,
   onRawText?: (value: string) => void,
 ) {
@@ -800,7 +790,7 @@ async function requestAiText(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.ai.apiKey}`,
     },
-    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, shouldStream, promptCacheKey)),
+    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, shouldStream)),
     signal,
   })
 
@@ -823,50 +813,46 @@ async function requestAiText(
 export function buildActionStoryTurnPreview(params: GenerateActionStoryParams): AiRequestPreview {
   const systemPrompt = buildStorySystemPrompt(params.config)
   const userPrompt = buildStoryUserPrompt(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'story-turn',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildStoryContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 220, false, promptCacheKey),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 220),
   }
 }
 
 export function buildInteractionEvaluationPreview(params: EvaluateActionInteractionParams): AiRequestPreview {
   const systemPrompt = buildEvaluationSystemPromptWithContext(params.config)
   const userPrompt = buildEvaluationUserPrompt(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'interaction-evaluation',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildEvaluationContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 180, false, promptCacheKey),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 180),
   }
 }
 
 export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): AiRequestPreview {
   const systemPrompt = buildFreeTimeSystemPrompt(params.config)
   const userPrompt = buildFreeTimeUserPrompt(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'free-time',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildFreeTimeContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 140, false, promptCacheKey),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 140),
   }
 }
 
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, promptCacheKey, params.signal, (value) => {
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal, (value) => {
     const nextLine = extractProgressiveLine(value)
     if (nextLine && nextLine !== lastLine) {
       lastLine = nextLine
@@ -878,16 +864,14 @@ export async function generateActionStoryTurn(params: GenerateActionStoryParams)
 
 export async function evaluateActionInteraction(params: EvaluateActionInteractionParams) {
   const preview = buildInteractionEvaluationPreview(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, promptCacheKey, params.signal)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal)
   return parseInteractionEvaluation(rawText, params.config)
 }
 
 export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams) {
   const preview = buildFreeTimeStoryPreview(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, promptCacheKey, params.signal, (value) => {
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal, (value) => {
     const nextLine = extractProgressiveLine(value)
     if (nextLine && nextLine !== lastLine) {
       lastLine = nextLine
