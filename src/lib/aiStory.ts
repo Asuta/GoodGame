@@ -1,4 +1,5 @@
 import { getMaxEnergyForConfig } from './gameCore/engine'
+import { normalizeGameConfig } from './gameCore/storage'
 import type { DailyAction, DiaryEntry, Effect, GameConfig, GameState, StatDef, StoryEvent } from './gameCore/types'
 
 type GenerateActionStoryParams = {
@@ -34,6 +35,13 @@ type GenerateFreeTimeStoryParams = {
 type GenerateDailyDiaryParams = {
   config: GameConfig
   state: GameState
+  signal?: AbortSignal
+}
+
+type GenerateReskinnedConfigParams = {
+  config: GameConfig
+  brief: string
+  onUsage?: (usage: AiUsageSummary | null) => void
   signal?: AbortSignal
 }
 
@@ -137,8 +145,13 @@ export type AiDiaryEntry = {
   content: string
 }
 
+export type AiReskinConfigResult = {
+  config: GameConfig
+  rawText: string
+}
+
 export type AiRequestPreview = {
-  kind: 'story-turn' | 'interaction-evaluation' | 'free-time' | 'daily-diary'
+  kind: 'story-turn' | 'interaction-evaluation' | 'free-time' | 'daily-diary' | 'reskin-config'
   endpoint: string
   systemPrompt: string
   userPrompt: string
@@ -533,6 +546,45 @@ function buildDailyDiaryUserPrompt(params: GenerateDailyDiaryParams) {
   ].join('\n\n')
 }
 
+function buildReskinTemplateConfig(config: GameConfig) {
+  return {
+    ...config,
+    ai: {
+      ...config.ai,
+      apiKey: '',
+    },
+  }
+}
+
+function buildReskinConfigSystemPrompt(config: GameConfig) {
+  return [
+    'You are the content planner and JSON configuration generator for a config-driven narrative raising game.',
+    'Write in Simplified Chinese where natural, but return JSON only.',
+    'Generate a complete GameConfig object for a new reskinned version of the game.',
+    'Keep the gameplay framework compatible with the provided template.',
+    'Return JSON only. No Markdown, no explanation, no code fences.',
+    'The top-level keys and nested schema must stay compatible with the template GameConfig.',
+    'You may rewrite title, subtitle, prologue, scenes, stats, dailyActions, events, ai.characterName, ai.characterProfile, ai.worldSetting, and ai.promptNotes.',
+    'Preserve technical connection fields unless the request explicitly requires changes: ai.apiMode, ai.apiBaseUrl, ai.model, ai.reasoningEffort.',
+    'Keep ai.apiKey as an empty string.',
+    'defaultSceneId must match a real scene id.',
+    'Every statId, sceneId, and availableTimeSlotIds reference must point to existing ids in the same JSON.',
+    'Use stable English or kebab-case ids instead of Chinese ids.',
+    'Rewrite all narrative text so it fits the new setting instead of reusing the old theme.',
+    'The result must be directly importable as GameConfig in this app.',
+    'Reference template JSON:',
+    JSON.stringify(buildReskinTemplateConfig(config), null, 2),
+  ].join('\n')
+}
+
+function buildReskinConfigUserPrompt(params: GenerateReskinnedConfigParams) {
+  return [
+    'Create a new reskinned GameConfig from the template below.',
+    `Reskin direction: ${params.brief.trim() || 'Keep the current gameplay loop but move it to a clearly different setting.'}`,
+    'Prioritize replacing the world setting, heroine setup, stat semantics, daily actions, events, and prompt writing tone so the new game feels like a different theme built on the same engine.',
+  ].join('\n\n')
+}
+
 function buildFreeTimeUserPrompt(params: GenerateFreeTimeStoryParams) {
   const dynamicContext = buildFreeTimeContext(params)
 
@@ -702,6 +754,23 @@ function parseDailyDiary(rawText: string): AiDiaryEntry {
   const content = sanitizeText(extractStoryLineFromPlainText(rawText))
   if (!content) throw new Error('AI returned no usable diary entry.')
   return { content }
+}
+
+function parseReskinnedConfig(rawText: string): AiReskinConfigResult {
+  for (const candidate of extractJsonCandidates(rawText)) {
+    try {
+      const parsed = normalizeGameConfig(JSON.parse(candidate) as Partial<GameConfig>)
+      if (!parsed.title || parsed.scenes.length === 0 || parsed.dailyActions.length === 0) continue
+      return {
+        config: parsed,
+        rawText: JSON.stringify(parsed, null, 2),
+      }
+    } catch {
+      continue
+    }
+  }
+
+  throw new Error('AI returned no usable GameConfig JSON.')
 }
 
 function sanitizeEffects(config: GameConfig, effects: InteractionEffectPayload[] | undefined) {
@@ -1021,6 +1090,23 @@ export function buildDailyDiaryPreview(params: GenerateDailyDiaryParams): AiRequ
   }
 }
 
+export function buildReskinConfigPreview(params: GenerateReskinnedConfigParams): AiRequestPreview {
+  const systemPrompt = buildReskinConfigSystemPrompt(params.config)
+  const userPrompt = buildReskinConfigUserPrompt(params)
+  return {
+    kind: 'reskin-config',
+    endpoint: buildEndpoint(params.config),
+    systemPrompt,
+    userPrompt,
+    context: {
+      currentTitle: params.config.title,
+      requestedBrief: params.brief.trim(),
+      templateConfig: buildReskinTemplateConfig(params.config),
+    },
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 4000),
+  }
+}
+
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
   let lastLine = ''
@@ -1073,5 +1159,11 @@ export async function generateDailyDiary(params: GenerateDailyDiaryParams) {
   const preview = buildDailyDiaryPreview(params)
   const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 260, params.signal)
   return parseDailyDiary(rawText)
+}
+
+export async function generateReskinnedConfig(params: GenerateReskinnedConfigParams) {
+  const preview = buildReskinConfigPreview(params)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 4000, params.signal, undefined, params.onUsage)
+  return parseReskinnedConfig(rawText)
 }
 
