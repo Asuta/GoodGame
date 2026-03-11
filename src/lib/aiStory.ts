@@ -9,6 +9,7 @@ type GenerateActionStoryParams = {
   previousLines?: string[]
   playerIntent?: string
   onLineUpdate?: (value: string) => void
+  onUsage?: (usage: AiUsageSummary | null) => void
   signal?: AbortSignal
 }
 
@@ -18,6 +19,7 @@ type EvaluateActionInteractionParams = {
   state: GameState
   generatedLines: string[]
   playerIntents: string[]
+  onUsage?: (usage: AiUsageSummary | null) => void
   signal?: AbortSignal
 }
 
@@ -25,6 +27,7 @@ type GenerateFreeTimeStoryParams = {
   config: GameConfig
   state: GameState
   onLineUpdate?: (value: string) => void
+  onUsage?: (usage: AiUsageSummary | null) => void
   signal?: AbortSignal
 }
 
@@ -34,6 +37,17 @@ type ChatCompletionsResponse = {
       content?: string | Array<{ text?: string; type?: string }>
     }
   }>
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    prompt_tokens_details?: {
+      cached_tokens?: number
+    }
+    completion_tokens_details?: {
+      reasoning_tokens?: number
+    }
+  }
 }
 
 type ResponsesApiResponse = {
@@ -44,6 +58,17 @@ type ResponsesApiResponse = {
       type?: string
     }>
   }>
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
+    input_tokens_details?: {
+      cached_tokens?: number
+    }
+    output_tokens_details?: {
+      reasoning_tokens?: number
+    }
+  }
 }
 
 type ResponsesStreamEvent = {
@@ -56,6 +81,9 @@ type ResponsesStreamEvent = {
   }
   output_text?: string
   text?: string
+  response?: {
+    usage?: ResponsesApiResponse['usage']
+  }
 }
 
 type StoryTurnPayload = {
@@ -99,6 +127,14 @@ export type AiRequestPreview = {
   userPrompt: string
   context: Record<string, unknown>
   payload: Record<string, unknown>
+}
+
+export type AiUsageSummary = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  cachedTokens: number
+  reasoningTokens: number
 }
 
 export function canUseAiStory(config: GameConfig) {
@@ -162,6 +198,30 @@ function extractResponsesContent(payload: ResponsesApiResponse) {
     .join('\n')
 }
 
+function extractUsageSummary(payload: ResponsesApiResponse | ChatCompletionsResponse, apiMode: GameConfig['ai']['apiMode']): AiUsageSummary | null {
+  if (apiMode === 'responses') {
+    const usage = (payload as ResponsesApiResponse).usage
+    if (!usage) return null
+    return {
+      inputTokens: usage.input_tokens || 0,
+      outputTokens: usage.output_tokens || 0,
+      totalTokens: usage.total_tokens || 0,
+      cachedTokens: usage.input_tokens_details?.cached_tokens || 0,
+      reasoningTokens: usage.output_tokens_details?.reasoning_tokens || 0,
+    }
+  }
+
+  const usage = (payload as ChatCompletionsResponse).usage
+  if (!usage) return null
+  return {
+    inputTokens: usage.prompt_tokens || 0,
+    outputTokens: usage.completion_tokens || 0,
+    totalTokens: usage.total_tokens || 0,
+    cachedTokens: usage.prompt_tokens_details?.cached_tokens || 0,
+    reasoningTokens: usage.completion_tokens_details?.reasoning_tokens || 0,
+  }
+}
+
 function extractResponsesStreamDelta(payload: ResponsesStreamEvent, eventName: string, hasStreamedText: boolean) {
   if (eventName.endsWith('.delta') && typeof payload.delta === 'string') return payload.delta
   if (!hasStreamedText && eventName.endsWith('.done') && typeof payload.text === 'string') return payload.text
@@ -199,7 +259,7 @@ async function parseErrorMessage(response: Response) {
   }
 }
 
-async function parseSuccessfulResponseText(response: Response, config: GameConfig) {
+async function parseSuccessfulResponse(response: Response, config: GameConfig) {
   const text = await response.text()
   const trimmed = text.trim()
 
@@ -210,13 +270,16 @@ async function parseSuccessfulResponseText(response: Response, config: GameConfi
   const contentType = (response.headers.get('content-type') || '').toLowerCase()
   const looksLikeJson = contentType.includes('application/json') || contentType.includes('+json') || trimmed.startsWith('{') || trimmed.startsWith('[')
 
-  if (!looksLikeJson) return trimmed
+  if (!looksLikeJson) return { text: trimmed, usage: null }
 
   try {
     const data = JSON.parse(trimmed) as ResponsesApiResponse | ChatCompletionsResponse
-    return config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse)
+    return {
+      text: config.ai.apiMode === 'responses' ? extractResponsesContent(data as ResponsesApiResponse) : extractChatContent(data as ChatCompletionsResponse),
+      usage: extractUsageSummary(data, config.ai.apiMode),
+    }
   } catch {
-    return trimmed
+    return { text: trimmed, usage: null }
   }
 }
 function buildStatDefinitions(config: GameConfig) {
@@ -648,6 +711,8 @@ function buildRequestPayload(
   return config.ai.apiMode === 'responses'
     ? {
         model: config.ai.model,
+        // Some OpenAI-compatible Responses gateways only report prompt-cache hits
+        // when the stable prefix is sent as message history instead of top-level instructions.
         input: [
           {
             role: 'system',
@@ -708,12 +773,13 @@ function parseSseEvent(rawEvent: string) {
 
 async function readStreamedAiText(response: Response, config: GameConfig, onRawText: (value: string) => void) {
   const reader = response.body?.getReader()
-  if (!reader) return ''
+  if (!reader) return { text: '', usage: null }
 
   const decoder = new TextDecoder()
   let buffer = ''
   let rawText = ''
   let hasStreamedText = false
+  let usage: AiUsageSummary | null = null
 
   while (true) {
     const { value, done } = await reader.read()
@@ -726,10 +792,13 @@ async function readStreamedAiText(response: Response, config: GameConfig, onRawT
       const parsedEvent = parseSseEvent(rawEvent)
 
       if (parsedEvent) {
-        if (parsedEvent.data === '[DONE]') return rawText
+        if (parsedEvent.data === '[DONE]') return { text: rawText, usage }
 
         try {
           const payload = JSON.parse(parsedEvent.data) as ResponsesStreamEvent
+          if (parsedEvent.eventName === 'response.completed' && payload.response?.usage) {
+            usage = extractUsageSummary({ usage: payload.response.usage }, 'responses')
+          }
           const delta =
             config.ai.apiMode === 'responses'
               ? extractResponsesStreamDelta(payload, parsedEvent.eventName, hasStreamedText)
@@ -756,6 +825,9 @@ async function readStreamedAiText(response: Response, config: GameConfig, onRawT
     if (parsedEvent && parsedEvent.data !== '[DONE]') {
       try {
         const payload = JSON.parse(parsedEvent.data) as ResponsesStreamEvent
+        if (parsedEvent.eventName === 'response.completed' && payload.response?.usage) {
+          usage = extractUsageSummary({ usage: payload.response.usage }, 'responses')
+        }
         const delta =
           config.ai.apiMode === 'responses'
             ? extractResponsesStreamDelta(payload, parsedEvent.eventName, hasStreamedText)
@@ -766,12 +838,12 @@ async function readStreamedAiText(response: Response, config: GameConfig, onRawT
           onRawText(rawText)
         }
       } catch {
-        return rawText
+        return { text: rawText, usage }
       }
     }
   }
 
-  return rawText
+  return { text: rawText, usage }
 }
 
 async function requestAiText(
@@ -781,6 +853,7 @@ async function requestAiText(
   maxTokens: number,
   signal?: AbortSignal,
   onRawText?: (value: string) => void,
+  onUsage?: (usage: AiUsageSummary | null) => void,
 ) {
   const endpoint = buildEndpoint(config)
   const shouldStream = config.ai.apiMode === 'responses' || Boolean(onRawText)
@@ -801,13 +874,15 @@ async function requestAiText(
   const fallbackResponse = response.body ? response.clone() : null
   const contentType = response.headers.get('content-type') || ''
   if (response.body && contentType.includes('text/event-stream')) {
-    const streamedText = await readStreamedAiText(response, config, onRawText || (() => {}))
-    if (streamedText.trim()) return streamedText
+    const streamedResult = await readStreamedAiText(response, config, onRawText || (() => {}))
+    if (streamedResult.usage) onUsage?.(streamedResult.usage)
+    if (streamedResult.text.trim()) return streamedResult.text
   }
 
-  const finalText = await parseSuccessfulResponseText(fallbackResponse || response, config)
-  if (onRawText) onRawText(finalText)
-  return finalText
+  const finalResult = await parseSuccessfulResponse(fallbackResponse || response, config)
+  if (onRawText) onRawText(finalResult.text)
+  onUsage?.(finalResult.usage)
+  return finalResult.text
 }
 
 export function buildActionStoryTurnPreview(params: GenerateActionStoryParams): AiRequestPreview {
@@ -852,32 +927,48 @@ export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): 
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal, (value) => {
-    const nextLine = extractProgressiveLine(value)
-    if (nextLine && nextLine !== lastLine) {
-      lastLine = nextLine
-      params.onLineUpdate?.(nextLine)
-    }
-  })
+  const rawText = await requestAiText(
+    params.config,
+    preview.systemPrompt,
+    preview.userPrompt,
+    220,
+    params.signal,
+    (value) => {
+      const nextLine = extractProgressiveLine(value)
+      if (nextLine && nextLine !== lastLine) {
+        lastLine = nextLine
+        params.onLineUpdate?.(nextLine)
+      }
+    },
+    params.onUsage,
+  )
   return parseStoryTurn(rawText)
 }
 
 export async function evaluateActionInteraction(params: EvaluateActionInteractionParams) {
   const preview = buildInteractionEvaluationPreview(params)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal, undefined, params.onUsage)
   return parseInteractionEvaluation(rawText, params.config)
 }
 
 export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams) {
   const preview = buildFreeTimeStoryPreview(params)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal, (value) => {
-    const nextLine = extractProgressiveLine(value)
-    if (nextLine && nextLine !== lastLine) {
-      lastLine = nextLine
-      params.onLineUpdate?.(nextLine)
-    }
-  })
+  const rawText = await requestAiText(
+    params.config,
+    preview.systemPrompt,
+    preview.userPrompt,
+    140,
+    params.signal,
+    (value) => {
+      const nextLine = extractProgressiveLine(value)
+      if (nextLine && nextLine !== lastLine) {
+        lastLine = nextLine
+        params.onLineUpdate?.(nextLine)
+      }
+    },
+    params.onUsage,
+  )
   return parseSingleLineNarration(rawText)
 }
 

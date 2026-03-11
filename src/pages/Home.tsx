@@ -42,6 +42,7 @@ export default function Home() {
     aiError,
     nextAiRequestPreview,
     lastAiRequestPreview,
+    lastAiUsage,
     unlockedCount,
     currentTimeSlot,
     remainingTimeSlots,
@@ -102,6 +103,25 @@ export default function Home() {
           <section className="rounded-2xl border border-emerald-400/20 bg-slate-900/80 p-4">
             <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">Last request</p>
             <p className="mt-1 text-sm text-slate-400">This is the most recent AI payload that was actually sent.</p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="rounded-xl border border-emerald-400/20 bg-slate-950/70 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-emerald-300">Input</p>
+                <p className="mt-1 text-lg font-semibold text-white">{lastAiUsage?.inputTokens ?? '-'}</p>
+              </div>
+              <div className="rounded-xl border border-cyan-400/20 bg-slate-950/70 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">Cached</p>
+                <p className="mt-1 text-lg font-semibold text-white">{lastAiUsage?.cachedTokens ?? '-'}</p>
+              </div>
+              <div className="rounded-xl border border-amber-400/20 bg-slate-950/70 p-3">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300">Output</p>
+                <p className="mt-1 text-lg font-semibold text-white">{lastAiUsage?.outputTokens ?? '-'}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              {lastAiUsage
+                ? `Total ${lastAiUsage.totalTokens} tokens${lastAiUsage.reasoningTokens ? `, reasoning ${lastAiUsage.reasoningTokens}` : ''}.`
+                : 'Token usage will appear here after the next successful AI request.'}
+            </p>
             <pre className="mt-3 max-h-[58vh] overflow-auto rounded-xl bg-slate-950/80 p-4 text-xs leading-6 text-slate-200">
               {JSON.stringify(lastAiRequestPreview || { message: 'No AI request has been sent yet.' }, null, 2)}
             </pre>
@@ -579,6 +599,21 @@ export default function Home() {
             <div className="rounded-lg bg-slate-800/90 p-2">
               <p className="text-xs text-slate-400">事件</p>
               <p className="font-semibold">{unlockedCount}</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">AI Usage</p>
+                <p className="mt-1 text-sm text-slate-300">
+                  {lastAiUsage ? `最近一次请求缓存命中 ${lastAiUsage.cachedTokens} tokens` : '下一次成功请求后显示 token 统计'}
+                </p>
+              </div>
+              <div className="text-right text-xs text-slate-400">
+                <p>Input {lastAiUsage?.inputTokens ?? '-'}</p>
+                <p>Output {lastAiUsage?.outputTokens ?? '-'}</p>
+              </div>
             </div>
           </div>
 

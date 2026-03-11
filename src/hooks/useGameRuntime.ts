@@ -22,6 +22,7 @@ import {
   generateFreeTimeStory,
   generateActionStoryTurn,
   type AiRequestPreview,
+  type AiUsageSummary,
 } from '@/lib/aiStory'
 
 type AiDialogueSession = {
@@ -105,6 +106,7 @@ export function useGameRuntime(config: GameConfig) {
   const [isGeneratingNarrative, setIsGeneratingNarrative] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [lastAiRequestPreview, setLastAiRequestPreview] = useState<AiRequestPreview | null>(null)
+  const [lastAiUsage, setLastAiUsage] = useState<AiUsageSummary | null>(null)
   const [displayTimeSlotIndexOverride, setDisplayTimeSlotIndexOverride] = useState<number | null>(null)
   const aiAbortRef = useRef<AbortController | null>(null)
   const aiRequestIdRef = useRef(0)
@@ -254,6 +256,10 @@ export function useGameRuntime(config: GameConfig) {
           if (!line || controller.signal.aborted || aiRequestIdRef.current !== requestId) return
           setGame((prev) => (prev.currentMessage === line ? prev : { ...prev, currentMessage: line }))
         },
+        onUsage: (usage) => {
+          if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return
+          setLastAiUsage(usage)
+        },
         signal: controller.signal,
       })
 
@@ -300,6 +306,10 @@ export function useGameRuntime(config: GameConfig) {
         },
         generatedLines: session.generatedLines,
         playerIntents: session.playerIntents,
+        onUsage: (usage) => {
+          if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return
+          setLastAiUsage(usage)
+        },
         signal: controller.signal,
       })
 
@@ -335,6 +345,10 @@ export function useGameRuntime(config: GameConfig) {
         onLineUpdate: (nextLine) => {
           if (!nextLine || controller.signal.aborted || aiRequestIdRef.current !== requestId) return
           setGame((prev) => (prev.currentMessage === nextLine ? prev : { ...prev, currentMessage: nextLine }))
+        },
+        onUsage: (usage) => {
+          if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return
+          setLastAiUsage(usage)
         },
         signal: controller.signal,
       })
@@ -649,6 +663,7 @@ export function useGameRuntime(config: GameConfig) {
     setIsGeneratingNarrative(false)
     setDisplayTimeSlotIndexOverride(null)
     setAiError(null)
+    setLastAiUsage(null)
     setDialogue(null)
     setGame(createInitialGameState(config))
   }
@@ -667,6 +682,7 @@ export function useGameRuntime(config: GameConfig) {
     aiError,
     nextAiRequestPreview,
     lastAiRequestPreview,
+    lastAiUsage,
     unlockedCount,
     currentTimeSlot,
     remainingTimeSlots,
