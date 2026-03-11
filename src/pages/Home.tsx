@@ -498,6 +498,7 @@ export default function Home() {
                     {canShowAiCustomInput ? (
                       <form
                         key={customIntentFormKey}
+                        autoComplete="off"
                         className="flex min-w-[260px] flex-1 gap-2"
                         onClick={(event) => event.stopPropagation()}
                         onSubmit={(event) => {
@@ -510,6 +511,7 @@ export default function Home() {
                         }}
                       >
                         <input
+                          autoComplete="off"
                           className="flex-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400"
                           defaultValue=""
                           name="customIntent"
