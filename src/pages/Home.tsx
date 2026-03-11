@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useGameConfig } from '@/hooks/useGameConfig'
 import { useTypewriterText } from '@/hooks/useTypewriterText'
 import { DEFAULT_CONFIG, clamp } from '@/lib/gameCore'
+import type { SceneDef } from '@/lib/gameCore'
 import { useGameRuntime } from '@/hooks/useGameRuntime'
 
 function PlaceholderVisual({ label }: { label: string }) {
@@ -12,6 +13,48 @@ function PlaceholderVisual({ label }: { label: string }) {
       {label}
     </div>
   )
+}
+
+function normalizeAssetPath(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:|file:|\/)/i.test(trimmed)) return trimmed
+  return `/${trimmed.replace(/^\.\//, '')}`
+}
+
+function getDefaultSceneAssetPath(sceneId: string, asset: 'background' | 'character' | 'portrait') {
+  return `/images/scenes/${sceneId}/${asset}.png`
+}
+
+function resolveSceneAssetUrl(scene: SceneDef | undefined, asset: 'background' | 'character' | 'portrait') {
+  if (!scene) return ''
+  const explicitUrl = asset === 'background' ? scene.backgroundUrl : asset === 'character' ? scene.characterUrl : scene.portraitUrl
+  return normalizeAssetPath(explicitUrl) || getDefaultSceneAssetPath(scene.id, asset)
+}
+
+function SceneImage({
+  scene,
+  asset,
+  alt,
+  className,
+  fallbackLabel,
+}: {
+  scene: SceneDef | undefined
+  asset: 'background' | 'character' | 'portrait'
+  alt: string
+  className: string
+  fallbackLabel: string
+}) {
+  const src = resolveSceneAssetUrl(scene, asset)
+  const [failedSrc, setFailedSrc] = useState('')
+
+  useEffect(() => {
+    setFailedSrc('')
+  }, [src])
+
+  if (!src || failedSrc === src) return <PlaceholderVisual label={fallbackLabel} />
+
+  return <img alt={alt} className={className} onError={() => setFailedSrc(src)} src={src} />
 }
 
 const TYPING_SPEED_OPTIONS = [
@@ -499,19 +542,11 @@ export default function Home() {
       <section className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <article className="overflow-hidden rounded-2xl border border-slate-900/30 bg-slate-950 shadow-2xl shadow-slate-900/35">
           <div className="relative aspect-[16/10] w-full border-b border-slate-700/60 bg-slate-900">
-            {currentScene?.backgroundUrl ? (
-              <img alt="scene background" className="h-full w-full object-cover" src={currentScene.backgroundUrl} />
-            ) : (
-              <PlaceholderVisual label="BACKGROUND" />
-            )}
+            <SceneImage asset="background" alt="scene background" className="h-full w-full object-cover" fallbackLabel="BACKGROUND" scene={currentScene} />
 
             <div className="pointer-events-none absolute inset-x-[8%] bottom-0 top-[18%] flex items-end justify-center">
               <div className="h-full max-h-[95%] w-[58%]">
-                {currentScene?.characterUrl ? (
-                  <img alt="character" className="h-full w-full object-contain object-bottom" src={currentScene.characterUrl} />
-                ) : (
-                  <PlaceholderVisual label="CHARACTER" />
-                )}
+                <SceneImage asset="character" alt="character" className="h-full w-full object-contain object-bottom" fallbackLabel="CHARACTER" scene={currentScene} />
               </div>
             </div>
 

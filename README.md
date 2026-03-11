@@ -14,6 +14,7 @@
 补充文档：
 
 - `docs/ai-project-guide.md`：给 AI / 新接手开发者的快速项目导览
+- `docs/image-assets-guide.md`：场景图片目录、命名和推荐尺寸说明
 - `progress.md`：最近功能变更记录
 
 ## 功能概览

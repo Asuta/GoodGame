@@ -18,43 +18,52 @@ export function MediaTab({ config, setConfig }: EditorTabProps) {
             />
           </Field>
           <Field label="背景图 URL">
-            <input
-              placeholder="https://..."
-              className="rounded-lg border border-slate-300 px-3 py-2"
-              value={scene.backgroundUrl}
-              onChange={(e) =>
-                setConfig((prev) => ({
-                  ...prev,
-                  scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, backgroundUrl: e.target.value } : item)),
-                }))
-              }
-            />
+            <div className="space-y-1">
+              <input
+                placeholder={`留空时自动读取 /images/scenes/${scene.id}/background.png`}
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={scene.backgroundUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, backgroundUrl: e.target.value } : item)),
+                  }))
+                }
+              />
+              <p className="text-xs text-slate-500">可填完整 URL，或留空并把图片放到 `public/images/scenes/{scene.id}/background.png`。</p>
+            </div>
           </Field>
           <Field label="角色立绘 URL">
-            <input
-              placeholder="https://..."
-              className="rounded-lg border border-slate-300 px-3 py-2"
-              value={scene.characterUrl}
-              onChange={(e) =>
-                setConfig((prev) => ({
-                  ...prev,
-                  scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, characterUrl: e.target.value } : item)),
-                }))
-              }
-            />
+            <div className="space-y-1">
+              <input
+                placeholder={`留空时自动读取 /images/scenes/${scene.id}/character.png`}
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={scene.characterUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, characterUrl: e.target.value } : item)),
+                  }))
+                }
+              />
+              <p className="text-xs text-slate-500">可填完整 URL，或留空并把图片放到 `public/images/scenes/{scene.id}/character.png`。</p>
+            </div>
           </Field>
           <Field label="头像 URL（预留）">
-            <input
-              placeholder="https://..."
-              className="rounded-lg border border-slate-300 px-3 py-2"
-              value={scene.portraitUrl}
-              onChange={(e) =>
-                setConfig((prev) => ({
-                  ...prev,
-                  scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, portraitUrl: e.target.value } : item)),
-                }))
-              }
-            />
+            <div className="space-y-1">
+              <input
+                placeholder={`留空时自动读取 /images/scenes/${scene.id}/portrait.png`}
+                className="rounded-lg border border-slate-300 px-3 py-2"
+                value={scene.portraitUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    scenes: prev.scenes.map((item) => (item.id === scene.id ? { ...item, portraitUrl: e.target.value } : item)),
+                  }))
+                }
+              />
+              <p className="text-xs text-slate-500">可填完整 URL，或留空并把图片放到 `public/images/scenes/{scene.id}/portrait.png`。</p>
+            </div>
           </Field>
           <button
             className="h-fit rounded-lg bg-rose-100 px-3 py-2 text-sm text-rose-700"
