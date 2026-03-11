@@ -31,6 +31,8 @@ export function createInitialGameState(config: GameConfig): GameState {
     currentSceneId: config.defaultSceneId || config.scenes[0]?.id || '',
     currentMessage: '',
     log: ['Game started. Finish the prologue to enter the daily routine.'],
+    currentDayLog: [],
+    diaryEntries: [],
   }
 }
 
@@ -83,6 +85,7 @@ export function normalizeNarrative(raw: Narrative | undefined): Narrative {
 export function resolveTriggeredEvents(draft: GameState, config: GameConfig) {
   let stats = draft.stats
   const log = [...draft.log]
+  const currentDayLog = [...draft.currentDayLog]
   const unlocked = [...draft.unlockedEventIds]
   const dailyTriggered = [...draft.dailyTriggeredEventIds]
   let currentSceneId = draft.currentSceneId
@@ -102,7 +105,9 @@ export function resolveTriggeredEvents(draft: GameState, config: GameConfig) {
     if (!matched) return
 
     stats = applyEffects(stats, config, event.effects)
-    log.push(`Event: ${event.title} - ${event.description}`)
+    const eventLog = `Event: ${event.title} - ${event.description}`
+    log.push(eventLog)
+    currentDayLog.push(eventLog)
     currentMessage = event.description
     if (event.sceneId) currentSceneId = event.sceneId
     dailyTriggered.push(event.id)
@@ -117,6 +122,7 @@ export function resolveTriggeredEvents(draft: GameState, config: GameConfig) {
       log,
       currentSceneId,
       currentMessage,
+      currentDayLog,
       unlockedEventIds: unlocked,
       dailyTriggeredEventIds: dailyTriggered,
     },
@@ -149,5 +155,12 @@ export function reconcileGameState(prev: GameState, config: GameConfig): GameSta
     currentSceneId: sceneExists ? prev.currentSceneId : config.defaultSceneId || config.scenes[0]?.id || '',
     unlockedEventIds: prev.unlockedEventIds.filter((id) => config.events.some((event) => event.id === id)),
     dailyTriggeredEventIds: prev.dailyTriggeredEventIds.filter((id) => config.events.some((event) => event.id === id)),
+    currentDayLog: Array.isArray(prev.currentDayLog) ? prev.currentDayLog.filter((line): line is string => typeof line === 'string') : [],
+    diaryEntries: Array.isArray(prev.diaryEntries)
+      ? prev.diaryEntries.filter(
+          (entry): entry is GameState['diaryEntries'][number] =>
+            typeof entry?.day === 'number' && typeof entry?.content === 'string' && entry.content.trim().length > 0,
+        )
+      : [],
   }
 }

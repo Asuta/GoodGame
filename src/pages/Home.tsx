@@ -50,6 +50,7 @@ export default function Home() {
     nextAiRequestPreview,
     lastAiRequestPreview,
     lastAiUsage,
+    diaryEntries,
     unlockedCount,
     currentTimeSlot,
     remainingTimeSlots,
@@ -330,6 +331,38 @@ export default function Home() {
       </div>
 
       <p className="mt-3 text-xs text-slate-500">这些值会保存在当前浏览器中。启用 AI 模式后，会使用这里配置的模型参数继续生成剧情。</p>
+
+      <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-rose-700">Private Diary</p>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">希露薇的私密日记</h3>
+            <p className="mt-1 text-sm text-slate-600">每天结束后会生成一篇只写给她自己的日记。正常情况下玩家看不到，只有这里能翻阅。</p>
+          </div>
+          <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-rose-700 ring-1 ring-rose-200">{diaryEntries.length} 篇</div>
+        </div>
+
+        <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
+          {diaryEntries.length > 0 ? (
+            diaryEntries
+              .slice()
+              .reverse()
+              .map((entry) => (
+                <article key={`diary-${entry.day}`} className="rounded-2xl border border-rose-200/80 bg-white/90 p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900">第 {entry.day} 天</p>
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-rose-500">private</span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{entry.content}</p>
+                </article>
+              ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-rose-200 bg-white/70 px-3 py-4 text-sm text-slate-500">
+              还没有生成日记。先完成一天流程，夜里她才会偷偷写下自己的想法。
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   ) : null
 

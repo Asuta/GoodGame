@@ -16,10 +16,12 @@ import {
 } from '@/lib/gameCore'
 import {
   buildActionStoryTurnPreview,
+  buildDailyDiaryPreview,
   buildFreeTimeStoryPreview,
   buildInteractionEvaluationPreview,
   canUseAiStory,
   evaluateActionInteraction,
+  generateDailyDiary,
   generateFreeTimeStory,
   generateActionStoryTurn,
   type AiRequestPreview,
@@ -51,6 +53,19 @@ type DialogueState = {
 }
 
 const AI_REQUEST_TIMEOUT_MS = 20000
+
+function summarizeDiaryFromDay(state: GameState, config: GameConfig) {
+  const recentMoments = state.currentDayLog.slice(-4)
+  const statSummary = config.stats
+    .map((stat) => ({ name: stat.name, value: state.stats[stat.id] ?? stat.defaultValue }))
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 2)
+    .map((stat) => `${stat.name}${stat.value}`)
+    .join('，')
+
+  const eventText = recentMoments.length > 0 ? recentMoments.join('；') : '今天好像没有发生什么特别大的事。'
+  return `今天是第${state.day}天。${eventText} 她把这些片段悄悄记了下来，心里反复想着自己是不是已经比昨天更敢相信你一点。现在最明显的情绪大概是${statSummary || '复杂难明'}，她也提醒自己，明天要再小心一点，但也想试着向前走一小步。`
+}
 
 function packetFromAction(
   action: DailyAction,
@@ -181,7 +196,41 @@ export function useGameRuntime(config: GameConfig) {
     }))
   }
 
-  const finishDialogue = (pending: DialoguePacket[], latestGame: GameState = game) => {
+  const buildDiaryFallback = (state: GameState) => ({ content: summarizeDiaryFromDay(state, config) })
+
+  const requestDailyDiary = async (state: GameState) => {
+    if (!state.currentDayLog.length) return buildDiaryFallback(state)
+    if (!canUseAiStory(config)) return buildDiaryFallback(state)
+
+    const preview = buildDailyDiaryPreview({ config, state })
+    setLastAiRequestPreview(preview)
+    const { controller, requestId, timeoutId, wasTimedOut } = startAiRequest()
+
+    try {
+      const diary = await generateDailyDiary({
+        config,
+        state,
+        signal: controller.signal,
+      })
+
+      if (controller.signal.aborted || aiRequestIdRef.current !== requestId) return null
+      return diary
+    } catch (error) {
+      if (controller.signal.aborted && !wasTimedOut()) return null
+      if (aiRequestIdRef.current !== requestId) return null
+      const message = wasTimedOut() ? 'AI diary timed out. Switched back to fallback diary.' : error instanceof Error ? error.message : 'AI diary generation failed.'
+      setAiError(message)
+      setGame((prev) => ({
+        ...prev,
+        log: [...prev.log, `AI diary fallback: ${message}`],
+      }))
+      return buildDiaryFallback(state)
+    } finally {
+      finishAiRequest(requestId, timeoutId)
+    }
+  }
+
+  const finishDialogue = async (pending: DialoguePacket[], latestGame: GameState = game) => {
     if (pending.length > 0) {
       const [nextPacket, ...rest] = pending
       jumpToPacket(nextPacket, rest)
@@ -190,6 +239,8 @@ export function useGameRuntime(config: GameConfig) {
 
     const shouldAdvanceDay = latestGame.timeSlotIndex >= maxEnergy
     if (shouldAdvanceDay) {
+      const diaryEntry = await requestDailyDiary(latestGame)
+      if (!diaryEntry) return
       const drafted = {
         ...latestGame,
         day: latestGame.day + 1,
@@ -198,8 +249,11 @@ export function useGameRuntime(config: GameConfig) {
         currentMessage: `第 ${latestGame.day} 天结束。新的一天开始了。`,
         dailyTriggeredEventIds: [],
         log: [...latestGame.log, `第 ${latestGame.day} 天结束。`],
+        currentDayLog: [],
+        diaryEntries: [...latestGame.diaryEntries, { day: latestGame.day, content: diaryEntry.content }],
       }
       const resolved = resolveTriggeredEvents(drafted, config)
+      setDisplayTimeSlotIndexOverride(null)
       setDialogue(null)
       setGame(resolved.state)
       openPackets(resolved.triggeredEvents.map(packetFromEvent))
@@ -388,6 +442,7 @@ export function useGameRuntime(config: GameConfig) {
         ...game.log,
         summary ? `AI结算: ${effectSummary}。${summary}` : `AI结算: ${effectSummary}`,
       ],
+      currentDayLog: [...game.currentDayLog, summary ? `AI结算: ${effectSummary}。${summary}` : `AI结算: ${effectSummary}`],
     }
 
     const resolved = resolveTriggeredEvents(draft, config)
@@ -398,7 +453,7 @@ export function useGameRuntime(config: GameConfig) {
       return
     }
 
-    finishDialogue(pending, resolved.state)
+    await finishDialogue(pending, resolved.state)
   }
 
   const handleDialogueNext = async () => {
@@ -418,7 +473,7 @@ export function useGameRuntime(config: GameConfig) {
       return
     }
 
-    finishDialogue(dialogue.pending)
+    void finishDialogue(dialogue.pending)
   }
 
   const cancelAiNarrative = () => {
@@ -434,7 +489,7 @@ export function useGameRuntime(config: GameConfig) {
       ...prev,
       log: [...prev.log, 'AI generation canceled by player.'],
     }))
-    finishDialogue(dialogue.pending)
+    void finishDialogue(dialogue.pending)
   }
 
   const handleAiIntent = async (intent: string) => {
@@ -446,11 +501,12 @@ export function useGameRuntime(config: GameConfig) {
       ...prev,
       currentMessage: 'AI is drafting the next line...',
       log: [...prev.log, `玩家决定: ${intent}`],
+      currentDayLog: [...prev.currentDayLog, `玩家决定: ${intent}`],
     }))
 
     const turn = await requestAiTurn(session, intent)
     if (!turn) {
-      finishDialogue(dialogue.pending)
+      void finishDialogue(dialogue.pending)
       return
     }
 
@@ -464,6 +520,7 @@ export function useGameRuntime(config: GameConfig) {
       ...prev,
       currentMessage: turn.line,
       log: [...prev.log, `AI剧情: ${turn.line}`],
+      currentDayLog: [...prev.currentDayLog, `AI剧情: ${turn.line}`],
     }))
 
     jumpToPacket(packetFromAction(session.action, [turn.line], nextSession, turn.choices), dialogue.pending)
@@ -494,6 +551,7 @@ export function useGameRuntime(config: GameConfig) {
         stats,
         currentMessage: text,
         log: [...prev.log, `对话分支: ${choice.label} (${passed ? '成功' : '失败'})`],
+        currentDayLog: [...prev.currentDayLog, `对话分支: ${choice.label} (${passed ? '成功' : '失败'})`],
       }
     })
 
@@ -542,6 +600,7 @@ export function useGameRuntime(config: GameConfig) {
       currentMessage: action.flavor,
       currentSceneId: action.sceneId || game.currentSceneId,
       log: [...game.log, `Day ${game.day}: ${action.name}. ${action.flavor}`],
+      currentDayLog: [...game.currentDayLog, `行动: ${action.name}。${action.flavor}`],
     }
 
     const scriptedDraft = {
@@ -581,6 +640,7 @@ export function useGameRuntime(config: GameConfig) {
     setGame({
       ...baseDraft,
       log: [...baseDraft.log, `AI scene: ${action.name}`, `AI剧情: ${turn.line}`],
+      currentDayLog: [...baseDraft.currentDayLog, `AI剧情: ${turn.line}`],
       currentMessage: turn.line,
     })
 
@@ -605,6 +665,7 @@ export function useGameRuntime(config: GameConfig) {
       currentMessage: idleAction.flavor,
       currentSceneId: idleAction.sceneId || game.currentSceneId,
       log: [...game.log, `Day ${game.day}: ${idleAction.name}. ${idleAction.flavor}`],
+      currentDayLog: [...game.currentDayLog, `空档: ${idleAction.flavor}`],
     }
 
     const resolved = resolveTriggeredEvents(baseDraft, config)
@@ -633,6 +694,7 @@ export function useGameRuntime(config: GameConfig) {
       ...resolved.state,
       currentMessage: line,
       log: [...resolved.state.log, `AI free time: ${idleAction.name}`, `AI剧情: ${line}`],
+      currentDayLog: [...resolved.state.currentDayLog, `AI剧情: ${line}`],
     })
 
     const session: AiDialogueSession = {
@@ -701,6 +763,7 @@ export function useGameRuntime(config: GameConfig) {
     nextAiRequestPreview,
     lastAiRequestPreview,
     lastAiUsage,
+    diaryEntries: game.diaryEntries,
     unlockedCount,
     currentTimeSlot,
     remainingTimeSlots,
