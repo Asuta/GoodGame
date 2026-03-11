@@ -128,6 +128,21 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function hashPromptCacheKey(value: string) {
+  let hash = 2166136261
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(36)
+}
+
+function buildPromptCacheKey(config: GameConfig, systemPrompt: string) {
+  return `goodgame:${config.ai.model}:${hashPromptCacheKey(systemPrompt)}`
+}
+
 function extractJsonCandidates(raw: string) {
   const candidates = [raw.trim()]
   const fencedMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
@@ -286,7 +301,10 @@ function buildStorySystemPrompt(config: GameConfig) {
     'The options should be natural, concrete, and different from each other.',
     'Continue naturally from previous lines and any player intent that is provided.',
     'Do not use Markdown. Do not explain your answer. Do not include any fields other than line and choices.',
+    'Treat the static world context below as canonical and stable background information.',
     config.ai.promptNotes.trim(),
+    'Static world context:',
+    JSON.stringify(buildSharedStaticContext(config), null, 2),
   ].join('\n')
 }
 
@@ -307,16 +325,13 @@ function buildStoryContext(params: GenerateActionStoryParams) {
 }
 
 function buildStoryUserPrompt(params: GenerateActionStoryParams) {
-  const staticContext = buildSharedStaticContext(params.config)
   const dynamicContext = buildStoryContext(params)
 
   return [
-    'Use the static world context and the current turn context below to generate exactly one new line and two suggested next actions.',
+    'Use the current turn context below to generate exactly one new line and two suggested next actions.',
     'If playerIntent is present, treat it as what the player just chose or typed, and continue from it.',
     'The two generated options should be good suggestions only; the player may still type their own custom action.',
     'Keep the line concise and do not restart the scene from the beginning.',
-    'Static world context:',
-    JSON.stringify(staticContext, null, 2),
     'Current turn context:',
     JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
@@ -349,16 +364,13 @@ function buildEvaluationContext(params: EvaluateActionInteractionParams) {
 }
 
 function buildEvaluationUserPrompt(params: EvaluateActionInteractionParams) {
-  const staticContext = buildSharedStaticContext(params.config)
   const dynamicContext = buildEvaluationContext(params)
 
   return [
-    'Use the static world context and the completed interaction context below to judge the final stat changes.',
+    'Use the completed interaction context below to judge the final stat changes.',
     'The stat changes should reflect the whole interaction, including the player intents and the girl\'s reactions.',
     'You may lower stats if the interaction felt awkward, unsafe, dismissive, or hurtful.',
     'You may return no stat changes if the exchange had no meaningful effect.',
-    'Static world context:',
-    JSON.stringify(staticContext, null, 2),
     'Completed interaction context:',
     JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
@@ -373,7 +385,19 @@ function buildFreeTimeSystemPrompt(config: GameConfig) {
     'line must be 1 to 2 sentences, grounded, natural, and suitable for one-step reveal in the dialogue box.',
     'Describe what she chooses to do, think about, or quietly handle by herself during this time slot.',
     'Do not include choices, Markdown, or any explanation.',
+    'Treat the static world context below as canonical and stable background information.',
     config.ai.promptNotes.trim(),
+    'Static world context:',
+    JSON.stringify(buildSharedStaticContext(config), null, 2),
+  ].join('\n')
+}
+
+function buildEvaluationSystemPromptWithContext(config: GameConfig) {
+  return [
+    buildEvaluationSystemPrompt(),
+    'Treat the static world context below as canonical and stable background information.',
+    'Static world context:',
+    JSON.stringify(buildSharedStaticContext(config), null, 2),
   ].join('\n')
 }
 
@@ -394,15 +418,12 @@ function buildFreeTimeContext(params: GenerateFreeTimeStoryParams) {
 }
 
 function buildFreeTimeUserPrompt(params: GenerateFreeTimeStoryParams) {
-  const staticContext = buildSharedStaticContext(params.config)
   const dynamicContext = buildFreeTimeContext(params)
 
   return [
-    'Use the static world context and the current unattended time-slot context below to describe this unattended time slot.',
+    'Use the current unattended time-slot context below to describe this unattended time slot.',
     'Focus on the girl\'s own initiative. The player is present in the story world but does not direct her.',
     'Keep the beat concise and specific to this moment of the day.',
-    'Static world context:',
-    JSON.stringify(staticContext, null, 2),
     'Current unattended time-slot context:',
     JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
@@ -632,7 +653,14 @@ function buildEndpoint(config: GameConfig) {
   return config.ai.apiMode === 'responses' ? `${endpointBase}/responses` : `${endpointBase}/chat/completions`
 }
 
-function buildRequestPayload(config: GameConfig, systemPrompt: string, userPrompt: string, maxTokens: number, stream = false) {
+function buildRequestPayload(
+  config: GameConfig,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+  stream = false,
+  promptCacheKey?: string,
+) {
   return config.ai.apiMode === 'responses'
     ? {
         model: config.ai.model,
@@ -649,6 +677,7 @@ function buildRequestPayload(config: GameConfig, systemPrompt: string, userPromp
           },
         ],
         ...(buildResponsesReasoning(config) ? { reasoning: buildResponsesReasoning(config) } : {}),
+        ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
         max_output_tokens: maxTokens,
         stream,
       }
@@ -759,6 +788,7 @@ async function requestAiText(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number,
+  promptCacheKey?: string,
   signal?: AbortSignal,
   onRawText?: (value: string) => void,
 ) {
@@ -770,7 +800,7 @@ async function requestAiText(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.ai.apiKey}`,
     },
-    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, shouldStream)),
+    body: JSON.stringify(buildRequestPayload(config, systemPrompt, userPrompt, maxTokens, shouldStream, promptCacheKey)),
     signal,
   })
 
@@ -793,46 +823,50 @@ async function requestAiText(
 export function buildActionStoryTurnPreview(params: GenerateActionStoryParams): AiRequestPreview {
   const systemPrompt = buildStorySystemPrompt(params.config)
   const userPrompt = buildStoryUserPrompt(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'story-turn',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildStoryContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 220),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 220, false, promptCacheKey),
   }
 }
 
 export function buildInteractionEvaluationPreview(params: EvaluateActionInteractionParams): AiRequestPreview {
-  const systemPrompt = buildEvaluationSystemPrompt()
+  const systemPrompt = buildEvaluationSystemPromptWithContext(params.config)
   const userPrompt = buildEvaluationUserPrompt(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'interaction-evaluation',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildEvaluationContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 180),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 180, false, promptCacheKey),
   }
 }
 
 export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): AiRequestPreview {
   const systemPrompt = buildFreeTimeSystemPrompt(params.config)
   const userPrompt = buildFreeTimeUserPrompt(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'free-time',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildFreeTimeContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 140),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 140, false, promptCacheKey),
   }
 }
 
 export async function generateActionStoryTurn(params: GenerateActionStoryParams) {
   const preview = buildActionStoryTurnPreview(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, params.signal, (value) => {
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 220, promptCacheKey, params.signal, (value) => {
     const nextLine = extractProgressiveLine(value)
     if (nextLine && nextLine !== lastLine) {
       lastLine = nextLine
@@ -844,14 +878,16 @@ export async function generateActionStoryTurn(params: GenerateActionStoryParams)
 
 export async function evaluateActionInteraction(params: EvaluateActionInteractionParams) {
   const preview = buildInteractionEvaluationPreview(params)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, params.signal)
+  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 180, promptCacheKey, params.signal)
   return parseInteractionEvaluation(rawText, params.config)
 }
 
 export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams) {
   const preview = buildFreeTimeStoryPreview(params)
+  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
   let lastLine = ''
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, params.signal, (value) => {
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 140, promptCacheKey, params.signal, (value) => {
     const nextLine = extractProgressiveLine(value)
     if (nextLine && nextLine !== lastLine) {
       lastLine = nextLine
