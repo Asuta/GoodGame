@@ -219,14 +219,39 @@ async function parseSuccessfulResponseText(response: Response, config: GameConfi
     return trimmed
   }
 }
-function buildStatsContext(config: GameConfig, state: GameState) {
+function buildStatDefinitions(config: GameConfig) {
   return config.stats.map((stat) => ({
     id: stat.id,
     name: stat.name,
     description: stat.description,
-    current: state.stats[stat.id] ?? stat.defaultValue,
+    defaultValue: stat.defaultValue,
     range: [stat.min, stat.max],
   }))
+}
+
+function buildCurrentStatValues(config: GameConfig, state: GameState) {
+  return config.stats.map((stat) => ({
+    id: stat.id,
+    current: state.stats[stat.id] ?? stat.defaultValue,
+  }))
+}
+
+function buildSharedStaticContext(config: GameConfig) {
+  return {
+    gameTitle: config.title,
+    subtitle: config.subtitle,
+    heroine: {
+      name: config.ai.characterName,
+      profile: config.ai.characterProfile,
+    },
+    worldSetting: config.ai.worldSetting,
+    statDefinitions: buildStatDefinitions(config),
+    timeSlots: config.timeSlots,
+    scenes: config.scenes.map((scene) => ({
+      id: scene.id,
+      name: scene.name,
+    })),
+  }
 }
 
 function buildBaseContext(action: DailyAction, config: GameConfig, state: GameState) {
@@ -234,19 +259,11 @@ function buildBaseContext(action: DailyAction, config: GameConfig, state: GameSt
   const currentTimeSlot = state.timeSlotIndex >= config.timeSlots.length ? null : config.timeSlots[state.timeSlotIndex] || null
 
   return {
-    gameTitle: config.title,
-    subtitle: config.subtitle,
     day: state.day,
     energy: `${state.energy}/${getMaxEnergyForConfig(config)}`,
     currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
-    timeSlots: config.timeSlots,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
-    heroine: {
-      name: config.ai.characterName,
-      profile: config.ai.characterProfile,
-    },
-    worldSetting: config.ai.worldSetting,
-    stats: buildStatsContext(config, state),
+    currentStats: buildCurrentStatValues(config, state),
     latestAction: {
       id: action.id,
       name: action.name,
@@ -290,14 +307,18 @@ function buildStoryContext(params: GenerateActionStoryParams) {
 }
 
 function buildStoryUserPrompt(params: GenerateActionStoryParams) {
-  const context = buildStoryContext(params)
+  const staticContext = buildSharedStaticContext(params.config)
+  const dynamicContext = buildStoryContext(params)
 
   return [
-    'Use the JSON context below to generate exactly one new line and two suggested next actions.',
+    'Use the static world context and the current turn context below to generate exactly one new line and two suggested next actions.',
     'If playerIntent is present, treat it as what the player just chose or typed, and continue from it.',
     'The two generated options should be good suggestions only; the player may still type their own custom action.',
     'Keep the line concise and do not restart the scene from the beginning.',
-    JSON.stringify(context, null, 2),
+    'Static world context:',
+    JSON.stringify(staticContext, null, 2),
+    'Current turn context:',
+    JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
 }
 
@@ -328,14 +349,18 @@ function buildEvaluationContext(params: EvaluateActionInteractionParams) {
 }
 
 function buildEvaluationUserPrompt(params: EvaluateActionInteractionParams) {
-  const context = buildEvaluationContext(params)
+  const staticContext = buildSharedStaticContext(params.config)
+  const dynamicContext = buildEvaluationContext(params)
 
   return [
-    'Use the JSON context below to judge the completed interaction and decide the final stat changes.',
+    'Use the static world context and the completed interaction context below to judge the final stat changes.',
     'The stat changes should reflect the whole interaction, including the player intents and the girl\'s reactions.',
     'You may lower stats if the interaction felt awkward, unsafe, dismissive, or hurtful.',
     'You may return no stat changes if the exchange had no meaningful effect.',
-    JSON.stringify(context, null, 2),
+    'Static world context:',
+    JSON.stringify(staticContext, null, 2),
+    'Completed interaction context:',
+    JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
 }
 
@@ -358,29 +383,28 @@ function buildFreeTimeContext(params: GenerateFreeTimeStoryParams) {
   const currentTimeSlot = state.timeSlotIndex >= config.timeSlots.length ? null : config.timeSlots[state.timeSlotIndex] || null
 
   return {
-    gameTitle: config.title,
-    subtitle: config.subtitle,
     day: state.day,
     energy: `${state.energy}/${getMaxEnergyForConfig(config)}`,
     currentTimeSlot: currentTimeSlot ? { id: currentTimeSlot.id, label: currentTimeSlot.label } : null,
     currentScene: currentScene ? { id: currentScene.id, name: currentScene.name } : null,
-    heroine: {
-      name: config.ai.characterName,
-      profile: config.ai.characterProfile,
-    },
-    worldSetting: config.ai.worldSetting,
-    stats: buildStatsContext(config, state),
+    currentStats: buildCurrentStatValues(config, state),
     recentStory: state.log.slice(-config.ai.recentLogLimit),
     instruction: 'The player made no arrangement for this time slot. Describe what the girl chooses to do on her own.',
   }
 }
 
 function buildFreeTimeUserPrompt(params: GenerateFreeTimeStoryParams) {
+  const staticContext = buildSharedStaticContext(params.config)
+  const dynamicContext = buildFreeTimeContext(params)
+
   return [
-    'Use the JSON context below to describe this unattended time slot.',
+    'Use the static world context and the current unattended time-slot context below to describe this unattended time slot.',
     'Focus on the girl\'s own initiative. The player is present in the story world but does not direct her.',
     'Keep the beat concise and specific to this moment of the day.',
-    JSON.stringify(buildFreeTimeContext(params), null, 2),
+    'Static world context:',
+    JSON.stringify(staticContext, null, 2),
+    'Current unattended time-slot context:',
+    JSON.stringify(dynamicContext, null, 2),
   ].join('\n\n')
 }
 
