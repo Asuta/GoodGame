@@ -33,6 +33,8 @@ export default function Home() {
   const [autoPlayEnabled, setAutoPlayEnabled] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aiLogOpen, setAiLogOpen] = useState(false)
+  const [testPanelOpen, setTestPanelOpen] = useState(false)
+  const [testStatValues, setTestStatValues] = useState<Record<string, string>>({})
   const {
     game,
     currentScene,
@@ -60,6 +62,7 @@ export default function Home() {
     handleDoAction,
     handleDoNothing,
     handleRestart,
+    handleSetStats,
   } = useGameRuntime(config)
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
   const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '', typingDelay)
@@ -81,6 +84,25 @@ export default function Home() {
   }
   const restoreDefaultAiConfig = () => {
     setConfig((prev) => ({ ...prev, ai: { ...DEFAULT_CONFIG.ai } }))
+  }
+  const openTestPanel = () => {
+    setTestStatValues(
+      config.stats.reduce<Record<string, string>>((acc, stat) => {
+        acc[stat.id] = String(game.stats[stat.id] ?? stat.defaultValue)
+        return acc
+      }, {}),
+    )
+    setTestPanelOpen(true)
+  }
+  const applyTestStats = () => {
+    const nextStats = config.stats.reduce<Record<string, number>>((acc, stat) => {
+      const rawValue = Number(testStatValues[stat.id])
+      acc[stat.id] = Number.isFinite(rawValue) ? rawValue : game.stats[stat.id] ?? stat.defaultValue
+      return acc
+    }, {})
+
+    handleSetStats(nextStats)
+    setTestPanelOpen(false)
   }
 
   const aiLogPanel = aiLogOpen ? (
@@ -132,6 +154,53 @@ export default function Home() {
               {JSON.stringify(lastAiRequestPreview || { message: 'No AI request has been sent yet.' }, null, 2)}
             </pre>
           </section>
+        </div>
+      </section>
+    </div>
+  ) : null
+
+  const testPanel = testPanelOpen ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm" onClick={() => setTestPanelOpen(false)}>
+      <section
+        className="w-full max-w-2xl rounded-2xl border border-amber-400/30 bg-slate-950 text-slate-100 shadow-2xl shadow-amber-950/30"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-amber-300">Test Panel</p>
+            <h2 className="mt-1 text-lg font-semibold">手动调整当前属性</h2>
+          </div>
+          <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white" onClick={() => setTestPanelOpen(false)} type="button">
+            Close
+          </button>
+        </div>
+
+        <div className="grid gap-3 p-5 md:grid-cols-2">
+          {config.stats.map((stat) => (
+            <label className="flex flex-col gap-1 text-sm text-slate-200" key={stat.id}>
+              <span className="font-medium">
+                {stat.name} <span className="text-xs text-slate-400">({stat.min} - {stat.max})</span>
+              </span>
+              <input
+                className="rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-slate-100 outline-none focus:border-amber-400"
+                min={stat.min}
+                max={stat.max}
+                step={1}
+                type="number"
+                value={testStatValues[stat.id] ?? ''}
+                onChange={(event) => setTestStatValues((prev) => ({ ...prev, [stat.id]: event.target.value }))}
+              />
+            </label>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-800 px-5 py-4">
+          <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-white" onClick={openTestPanel} type="button">
+            重置为当前值
+          </button>
+          <button className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={applyTestStats} type="button">
+            应用测试属性
+          </button>
         </div>
       </section>
     </div>
@@ -375,6 +444,9 @@ export default function Home() {
           <button className="rounded-lg bg-slate-700 px-3 py-1.5 text-white" onClick={() => setAiLogOpen(true)} type="button">
             AI log
           </button>
+          <button className="rounded-lg bg-amber-700 px-3 py-1.5 text-white" onClick={openTestPanel} type="button">
+            测试属性
+          </button>
           <button className="rounded-lg bg-cyan-700 px-3 py-1.5 text-white" onClick={() => setSettingsOpen((prev) => !prev)} type="button">
             {settingsOpen ? '收起设置' : '游戏设置'}
           </button>
@@ -389,6 +461,7 @@ export default function Home() {
 
       {settingsPanel}
       {aiLogPanel}
+      {testPanel}
 
       <section className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
         <article className="overflow-hidden rounded-2xl border border-slate-900/30 bg-slate-950 shadow-2xl shadow-slate-900/35">
