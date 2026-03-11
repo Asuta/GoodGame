@@ -90,6 +90,7 @@ export default function Editor() {
         )}
         {tab === 'data' && (
           <DataTab
+            config={config}
             configText={JSON.stringify(config, null, 2)}
             importError={importError}
             importText={importText}
