@@ -2,6 +2,7 @@
 
 import {
   applyEffects,
+  clamp,
   createInitialGameState,
   evalChoiceCondition,
   getMaxEnergyForConfig,
@@ -653,6 +654,23 @@ export function useGameRuntime(config: GameConfig) {
     setGame(createInitialGameState(config))
   }
 
+  const handleSetStats = (nextStats: Record<string, number>) => {
+    setGame((prev) => {
+      const stats = config.stats.reduce<Record<string, number>>((acc, stat) => {
+        const rawValue = nextStats[stat.id]
+        const fallbackValue = prev.stats[stat.id] ?? stat.defaultValue
+        acc[stat.id] = clamp(typeof rawValue === 'number' && Number.isFinite(rawValue) ? rawValue : fallbackValue, stat.min, stat.max)
+        return acc
+      }, {})
+
+      return {
+        ...prev,
+        stats,
+        log: [...prev.log, 'Test panel: stats manually adjusted.'],
+      }
+    })
+  }
+
   return {
     game,
     currentScene,
@@ -680,5 +698,6 @@ export function useGameRuntime(config: GameConfig) {
     handleDoAction,
     handleDoNothing,
     handleRestart,
+    handleSetStats,
   }
 }
