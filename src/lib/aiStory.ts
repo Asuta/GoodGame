@@ -936,14 +936,13 @@ export function buildFreeTimeStoryPreview(params: GenerateFreeTimeStoryParams): 
 export function buildDailyDiaryPreview(params: GenerateDailyDiaryParams): AiRequestPreview {
   const systemPrompt = buildDailyDiarySystemPrompt(params.config)
   const userPrompt = buildDailyDiaryUserPrompt(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, systemPrompt)
   return {
     kind: 'daily-diary',
     endpoint: buildEndpoint(params.config),
     systemPrompt,
     userPrompt,
     context: buildDailyDiaryContext(params),
-    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 260, false, promptCacheKey),
+    payload: buildRequestPayload(params.config, systemPrompt, userPrompt, 260),
   }
 }
 
@@ -981,8 +980,7 @@ export async function generateFreeTimeStory(params: GenerateFreeTimeStoryParams)
 
 export async function generateDailyDiary(params: GenerateDailyDiaryParams) {
   const preview = buildDailyDiaryPreview(params)
-  const promptCacheKey = buildPromptCacheKey(params.config, preview.systemPrompt)
-  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 260, promptCacheKey, params.signal)
+  const rawText = await requestAiText(params.config, preview.systemPrompt, preview.userPrompt, 260, params.signal)
   return parseDailyDiary(rawText)
 }
 
