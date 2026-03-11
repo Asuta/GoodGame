@@ -22,6 +22,11 @@ const TYPING_SPEED_OPTIONS = [
 
 const AUTO_PLAY_DELAY = 700
 
+function formatCachedRatio(cachedTokens?: number, inputTokens?: number) {
+  if (!inputTokens || inputTokens <= 0) return null
+  return `${((cachedTokens || 0) / inputTokens * 100).toFixed(1)}%`
+}
+
 export default function Home() {
   const { config, setConfig, resetConfig } = useGameConfig()
   const [typingSpeedId, setTypingSpeedId] = useState<(typeof TYPING_SPEED_OPTIONS)[number]['id']>('normal')
@@ -59,6 +64,7 @@ export default function Home() {
   const typingDelay = useMemo(() => TYPING_SPEED_OPTIONS.find((option) => option.id === typingSpeedId)?.delay ?? 32, [typingSpeedId])
   const { displayedText, isTyping, finishTyping } = useTypewriterText(currentDialogueLine || '', typingDelay)
   const aiModeEnabled = config.ai.enabled
+  const cachedRatioLabel = formatCachedRatio(lastAiUsage?.cachedTokens, lastAiUsage?.inputTokens)
   const customIntentFormKey = dialogue ? `${dialogue.packet.source}-${dialogue.packet.lines[0] || ''}` : 'idle'
   const isDialogueAtEnd = Boolean(dialogue && dialogue.lineIndex >= dialogue.packet.lines.length - 1)
   const canShowAiCustomInput = Boolean(dialogue && dialogue.packet.aiSession && isDialogueAtEnd && !canShowChoices && !isTyping)
@@ -110,7 +116,7 @@ export default function Home() {
               </div>
               <div className="rounded-xl border border-cyan-400/20 bg-slate-950/70 p-3">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">Cached</p>
-                <p className="mt-1 text-lg font-semibold text-white">{lastAiUsage?.cachedTokens ?? '-'}</p>
+                <p className="mt-1 text-lg font-semibold text-white">{cachedRatioLabel ? `${cachedRatioLabel} (${lastAiUsage?.cachedTokens ?? 0})` : '-'}</p>
               </div>
               <div className="rounded-xl border border-amber-400/20 bg-slate-950/70 p-3">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-amber-300">Output</p>
@@ -607,7 +613,7 @@ export default function Home() {
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-emerald-200">AI Usage</p>
                 <p className="mt-1 text-sm text-slate-300">
-                  {lastAiUsage ? `最近一次请求缓存命中 ${lastAiUsage.cachedTokens} tokens` : '下一次成功请求后显示 token 统计'}
+                  {lastAiUsage ? `最近一次请求缓存命中 ${cachedRatioLabel || '0.0%'} (${lastAiUsage.cachedTokens} / ${lastAiUsage.inputTokens})` : '下一次成功请求后显示 token 统计'}
                 </p>
               </div>
               <div className="text-right text-xs text-slate-400">
